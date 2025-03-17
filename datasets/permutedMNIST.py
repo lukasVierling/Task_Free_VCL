@@ -22,7 +22,7 @@ class PermutedMNIST(Dataset):
             self.permutation = permutation
         else:
             self.permutation = torch.randperm(28*28) #permute all the entries in the image
-        print("Use the following permutation: ", self.permutation)
+        #print("Use the following permutation: ", self.permutation)
 
     def get_permutation(self):
         return self.permutation

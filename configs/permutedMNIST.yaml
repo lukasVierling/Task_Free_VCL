@@ -1,0 +1,7 @@
+
+num_tasks: 3
+epochs: 1
+lr: 0.00001
+hidden_dim: 100
+coreset_size: 0
+coreset_heuristic: "random"

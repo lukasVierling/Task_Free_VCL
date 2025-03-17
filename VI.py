@@ -2,6 +2,7 @@
 import torch
 import numpy as np
 from torch.utils.data import ConcatDataset, DataLoader, TensorDataset
+from tqdm import tqdm
 
 # my imports
 from utils.utils import kl_div_gaussian
@@ -73,7 +74,7 @@ def minimize_KL(model, prior, dataset):
 
     data_loader = DataLoader(dataset, batch_size=32, shuffle=True) #TODO batch_size hyperparameter
 
-    for x,y in data_loader: 
+    for x,y in tqdm(data_loader, desc="Training..."): 
         optimizer.zero_grad()
         #forward through the model to get likelihood
         output = model(x) #-> returns [B,C]
@@ -95,16 +96,17 @@ def update_final_var_dist(model, prior, curr_coreset):
 
 
 def perform_predictions(model, curr_test_dataset):
-    data_loader = DataLoader(curr_test_dataset)
+    data_loader = DataLoader(curr_test_dataset, batch_size=32)
     labels = []
     correct = 0
     model.eval()
     with torch.no_grad():
-        for x,y in data_loader:
+        for x,y in tqdm(data_loader,desc="Testing Performance"):
             probs = model(x)
             pred = torch.argmax(probs, dim=-1)
             correct += torch.sum(pred == y)
-            labels.append(pred)
+            #print(pred.shape)
+            labels.extend(pred.tolist())
 
     model.train()
     labels = torch.tensor(labels)
@@ -140,7 +142,7 @@ def coreset_vcl(model, train_datasets, test_datasets, coreset_size=0, coreset_he
     prior = model.get_var_dist()
     # get the number of datasets T
     T = len(train_datasets)
-    for i in range(T):
+    for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model
         model.add_head()
         # get the current dataset D_i
