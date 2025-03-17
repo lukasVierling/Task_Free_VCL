@@ -1,1 +1,5 @@
 playground.ipynb
+output/
+__pycache__/
+data/
+.conda/
