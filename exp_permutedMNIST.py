@@ -27,17 +27,19 @@ def main(config_path):
     print("Finished reading config")
     #dataset
     num_tasks = config["num_tasks"]
-    print(f"Dataset parameters: \n num_tasks:{num_tasks}")
+    print(f"Dataset parameters: \n  num_tasks:{num_tasks}")
 
     #training
     epochs = config["epochs"]
     lr = config["lr"]
     hidden_dim = config["hidden_dim"]
-    print(f"Training parameters:\n epcohs:{epochs}\nhidden_dim:{hidden_dim}\nlr:{lr}")
+    batch_size = config["batch_size"]
+    print(f"Training parameters:\n  epochs:{epochs}\n   hidden_dim:{hidden_dim}\n   lr:{lr}\n   batch_size:{batch_size}")
 
+    #coreset
     coreset_size = config["coreset_size"]
     coreset_heuristic = config["coreset_heuristic"]
-    print(f"VI parameters for coreset: \n coreset_size:{coreset_size} \n coreset_heuristic:{coreset_heuristic}")
+    print(f"VI parameters for coreset:\n   coreset_size:{coreset_size} \n   coreset_heuristic:{coreset_heuristic}")
     train_tasks = []
     test_tasks = []
 
@@ -50,14 +52,14 @@ def main(config_path):
 
     #constants for MNIST
     input_dim = 28*28
-    output_dim = 10
+    output_dim = 10 
 
     model = DiscriminativeModel(input_dim, output_dim, hidden_dim)
 
     print(f"Generated model with input_dim: {input_dim} and output_dim: {output_dim} \n Model: {model}")
 
     print("Start Training...")
-    coreset_vcl(model, train_tasks, test_tasks, coreset_size = 0)
+    coreset_vcl(model, train_tasks, test_tasks, coreset_size = coreset_size, coreset_heuristic=coreset_heuristic, batch_size=batch_size, epochs=epochs, lr=lr)
 
     print("Finished Training!")
 

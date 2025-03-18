@@ -1,7 +1,8 @@
 
-num_tasks: 3
-epochs: 1
-lr: 0.00001
+num_tasks: 10
+epochs: 3
+lr: 0.001
 hidden_dim: 100
 coreset_size: 0
 coreset_heuristic: "random"
+batch_size: 256

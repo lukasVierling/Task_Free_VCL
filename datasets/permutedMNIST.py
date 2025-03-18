@@ -17,7 +17,7 @@ class PermutedMNIST(Dataset):
         self.train = train
         self.data =  torchvision.datasets.MNIST(root='./data', train=self.train, download=True, transform=transforms.ToTensor())
         if permutation is not None:
-            if not(self.train):
+            if not(self.train) and permutation is None:
                 print("Warning creating test set without predefined permutation")
             self.permutation = permutation
         else:

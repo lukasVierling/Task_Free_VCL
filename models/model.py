@@ -25,6 +25,14 @@ class DiscriminativeModel(nn.Module):
                     "b_sigma": self.b_sigma.detach().clone()
                     }
         return var_dist
+    def set_var_dist(self, var_dist):
+        # detach them from any comp graph and trainable through nn.param
+        print("Initialize the shared layer with new var_dist")
+        self.W_mu = torch.nn.Parameter(var_dist["W_mu"].detach().clone())
+        self.b_mu = torch.nn.Parameter(var_dist["b_mu"].detach().clone())
+        self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone())
+        self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone())
+
     
     def add_head(self):
         '''
@@ -44,6 +52,8 @@ class DiscriminativeModel(nn.Module):
             self.active_head = i
         else:
             print("Head index out of bounds, active head:", self.active_head)
+    def get_active_head_idx(self):
+        return self.active_head
 
     def forward(self, x):
         #get bs
