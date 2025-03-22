@@ -38,11 +38,12 @@ def new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=500, heu
             new_coreset_idx = copy.deepcopy(coreset_idx)
             new_coreset_idx.append(idx_list)
             #iterate through the new list and create the current coreset
-            coresets = [Subset(curr_dataset, idx_list)]
+            coresets = []
             if len(coreset_idx) > 0:
                 print("Concat old coresets")
                 for task_no, coreset_idx_list in enumerate(coreset_idx):
                     coresets.append(Subset(train_datasets[task_no], coreset_idx_list))
+            coresets.append(Subset(curr_dataset, idx_list))
             new_coreset = coresets #IS a list
         else:
             print("Other heuristics are not implemented, please set heuristic to one of those values [random,]")
@@ -52,7 +53,7 @@ def new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=500, heu
 
     return new_coreset, new_coreset_idx
 
-def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train_datasets, batch_size, epochs, lr):
+def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train_datasets, batch_size, epochs, lr, device):
     # get a new distribution q
     #optimize the parameters of the new var_approx
     if coreset_idx is not None:
@@ -68,15 +69,16 @@ def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train
     else:
         train_dataset = curr_dataset
     #minimize the KL div
-    minimize_KL(model, prior, train_dataset, batch_size, epochs, lr)
+    minimize_KL(model, prior, train_dataset, batch_size, epochs, lr, device)
 
-def minimize_KL(model, prior, dataset, batch_size, epochs, lr):
+def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True) #TODO batch_size hyperparameter
     for epoch in tqdm(range(epochs), desc="Training"):
         for x,y in tqdm(data_loader, desc=f"Training in Epoch: {epoch}"): 
+            x,y = x.to(device),y.to(device)
             optimizer.zero_grad()
             #forward through the model to get likelihood
             output = model(x) #-> returns [B,C]
@@ -90,26 +92,48 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr):
             loss.backward()
             optimizer.step()
 
-def update_final_var_dist(model, prior, curr_coreset, batch_size, epochs, lr):
+def update_final_var_dist_and_test(task_idx, model, prior ,prior_heads, curr_coreset, test_datasets, batch_size, epochs, lr, device):
     # get a new distribution q
+    accs = []
     prev_head = model.get_active_head_idx()
     #optimize the KL between q_t tilde and q_t with likelihood over coreset_t
-    for head_idx, coreset in enumerate(curr_coreset):
+    if curr_coreset is not None:
+        for idx, coreset in enumerate(curr_coreset[:task_idx+1]):
+            #coreset is a small dataset
+            #activate the head for this dataset
+            model.activate_head(idx)
+            #eval acc
+            print("test acc before additional finetuning: ",perform_predictions(model, test_datasets[idx], batch_size, device))
+            #finetune on the coreset
+            minimize_KL(model, prior, coreset ,batch_size, epochs, lr, device)
+    
+    #start evaluating the model on all test sets
+    for idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
         #coreset is a small dataset
         #activate the head for this dataset
-        model.activate_head(head_idx)
-        minimize_KL(model, prior, coreset ,batch_size, epochs, lr)
+        model.activate_head(idx)
+        #test on the test dataset
+        accs.append(perform_predictions(model, test_dataset,batch_size, device))
+        print("test acc after additional finetuning: ", accs[-1])
+        #reset the finetuning
+    
+    #reset the finetuning
+    model.set_var_dist(prior)
+    model.set_heads(prior_heads)
     model.activate_head(prev_head)
+    mean_accs = sum(accs)/len(accs)
+    return mean_accs
 
 
 
-def perform_predictions(model, curr_test_dataset):
-    data_loader = DataLoader(curr_test_dataset, batch_size=32)
+def perform_predictions(model, curr_test_dataset,batch_size,device):
+    data_loader = DataLoader(curr_test_dataset, batch_size=batch_size)
     labels = []
     correct = 0
     model.eval()
     with torch.no_grad():
         for x,y in tqdm(data_loader,desc="Testing Performance"):
+            x,y = x.to(device),y.to(device)
             probs = model(x)
             pred = torch.argmax(probs, dim=-1)
             correct += torch.sum(pred == y)
@@ -118,10 +142,11 @@ def perform_predictions(model, curr_test_dataset):
 
     model.train()
     labels = torch.tensor(labels)
-    print("Tested with accuracy: " ,correct/len(labels))
-    return labels
+    #print("Tested with accuracy: " ,correct/len(labels))
+    acc = correct/len(labels)
+    return acc
 
-def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random"):
+def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random", device="cpu"):
     '''
     Input:
     - prior : prior distribution
@@ -129,6 +154,7 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
     Output: 
     - [(q_t,p_t)] t=1,...,T : Variational and predictive distribution at each step
     '''
+    model.to(device)
     ret = []
     use_coreset = coreset_size > 0
     coreset_idx = []
@@ -149,26 +175,22 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
         curr_dataset = train_datasets[i]
         curr_test_dataset = test_datasets[i]
         # update the coreset with D_i
-        curr_coreset, coreset_idx = new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=coreset_size, heuristic=coreset_heuristic)
+        curr_coresets, coreset_idx = new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=coreset_size, heuristic=coreset_heuristic)
         if use_coreset:
-            print(f"current Coreset length (should be {coreset_size * (i+1)}): ", len(curr_coreset))
+            print(f"current Coreset length (should be {coreset_size * (i+1)}): ", len(curr_coresets))
         # Update the variational distribution for non-coreset data points
-        update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train_datasets ,batch_size, epochs, lr)
+        update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train_datasets ,batch_size, epochs, lr, device)
         # Compute the final variational distribution (only used for prediction, and not propagation)
         #get q_t tilde before optimizing to get q_t
         prior = model.get_var_dist()
-        #TODO think about if this is correct but should be because we only finetune the head here 
-        if use_coreset and i == T-1: #TODO T-1 or after every epoch?
-            print("Perform anohter round of training because we are using a coreset.")
-            update_final_var_dist(model, prior, curr_coreset, batch_size, epochs, lr)
+        heads = model.get_heads()
+        #TODO think about if this is correct but should be because we only finetune the head here
+        acc = update_final_var_dist_and_test(i, model, prior, heads, curr_coresets, test_datasets, batch_size, epochs, lr, device)
         # Perform prediction at test input x*
-        preds = perform_predictions(model, curr_test_dataset)
+        #preds = perform_predictions(model, curr_test_dataset,device)
         #collect intermediate results
-        var_dist = {
-            "shared": model.get_var_dist(),
-            "head_idx": i
-        }
-        ret.append((var_dist, preds))
+        ret.append(acc)
+        print(f"Average acc of {acc} after training on task {i}")
         # init the model with the previous prior so we are not influenced by the coreset training
         #model.set_var_dist(prior)TODO reconsider the placement -> should not be used after last epocch
     #return final resutls

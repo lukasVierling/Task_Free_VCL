@@ -1,0 +1,7 @@
+algorithm_name: "EWC"
+num_tasks: 10
+epochs: 10
+lr: 0.001
+hidden_dim: 100
+lambdas : [100,100,100,100,100,100,100,100,100,100] #try values like 100
+batch_size: 256

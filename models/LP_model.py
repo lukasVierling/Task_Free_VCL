@@ -1,0 +1,162 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import copy
+from torch.utils.data import DataLoader, Subset
+
+from tqdm import tqdm
+
+
+class DiscriminativeModel(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim):
+        super().__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        # first hidden layer -> fld layer in one parameter vector
+        # Bayesian first hidden layer parameters (mean & log variance)
+        self.linear = torch.nn.Linear(input_dim, hidden_dim)
+        # second hidden layer, bayesian layer
+        self.heads = nn.ModuleList()
+        self.active_head = 0
+
+    def get_stacked_params(self, detach=True):
+        if detach:
+            params = [self.linear.weight.clone().detach().view(-1),
+                self.linear.bias.clone().detach().view(-1)]
+        else:
+            params = [self.linear.weight.view(-1),
+                self.linear.bias.view(-1)]
+        params = torch.cat(params)
+        return params
+
+
+    def get_fisher(self, dataset,sample_size=5000):
+        fisher_diag = None
+        self.eval()
+        batch_size = 1 #to prevent weird errors from summing before squaring
+        device = self.linear.weight.device
+        idx = torch.randperm(len(dataset))[:sample_size]
+        subset = Subset(dataset, idx)
+        data_loader = DataLoader(subset, shuffle=False, batch_size=batch_size) #shuffle doesn't matter 
+        #calculate the fisher information matrix on dataset D for current parameters
+        for x,y in data_loader:
+
+            self.zero_grad()
+            x,y = x.to(device), y.to(device)
+            output = self(x)
+            probs = output.gather(1, y.view(-1, 1)).squeeze() # get p(y_t | theta, x_t)
+            log_probs = torch.log(probs + 1e-8) #calc log(p(..))
+            loss = log_probs.sum() #Sign shouldn't matter #take sum because we have bs=1 anyway 
+            #take the gradient
+            loss.backward()
+            # concat and flatten all the gradients
+            grads = torch.cat([self.linear.weight.grad.clone().detach().view(-1),
+                                 self.linear.bias.grad.clone().detach().view(-1)])
+            #square the gradient
+            squared_grads = grads ** 2
+            if fisher_diag is None:
+                fisher_diag = torch.zeros_like(squared_grads, device=device)
+            fisher_diag += squared_grads
+            
+            #TODO paper doesn't average but Probabilistic ML 2 in formula 3.53 averages
+        self.zero_grad()
+        fisher_diag = fisher_diag/sample_size #TODO consider if we should take mean or sum
+        self.train()
+        return fisher_diag
+
+    
+
+    def get_hessian(self, dataset, subset_size = 500):
+        hessian_diag = None
+        self.eval()
+        batch_size = subset_size
+        device = self.linear.weight.device
+        idx = torch.randperm(len(dataset))[:subset_size]
+        sub_dataset = Subset(dataset, idx)
+        data_loader = DataLoader(sub_dataset, shuffle=True, batch_size=batch_size)
+        #calculate the fisher information matrix on dataset D for current parameters
+        for x,y in tqdm(data_loader, desc="Calc the Hessian"):
+            x,y = x.to(device), y.to(device)
+            output = self(x)
+            probs = output.gather(1, y.view(-1, 1)).squeeze() # get p(y_t | theta, x_t)
+            log_probs = torch.log(probs + 1e-8) #calc log(p(..))
+            loss = -log_probs.sum() # SUM (log(p(..))) #convert into negative log likelihood
+            #take the gradient
+            #loss.backward()
+            #take the derivative twice
+            # concat and flatten all the gradients
+            w, b = self.linear.weight, self.linear.bias
+            grads = torch.autograd.grad(loss, [w,b], create_graph=True)
+            grad_w, grad_b = grads
+
+            grad_w_flat, grad_b_flat = grad_w.view(-1), grad_b.view(-1)
+            w_flat, b_flat = w.view(-1), b.view(-1)
+
+            weight_hessian_diag = torch.zeros_like(w_flat)
+            bias_hessian_diag = torch.zeros_like(b_flat)
+            #calc the second derivative
+            for i in range(w.numel()):
+                grad_2 = torch.autograd.grad(grad_w_flat[i], w, retain_graph=True)[0].view(-1)[i]
+                weight_hessian_diag[i] = grad_2
+            for i in range(b.numel()):
+                grad_2 = torch.autograd.grad(grad_b_flat[i], b, retain_graph=True)[0].view(-1)[i]
+                bias_hessian_diag[i] = grad_2
+            
+            intermediate_hessian_diag = torch.cat([weight_hessian_diag, bias_hessian_diag])           
+            
+            if hessian_diag is None:
+                hessian_diag = torch.zeros_like(intermediate_hessian_diag, device=device)
+            hessian_diag += intermediate_hessian_diag
+            
+            #TODO paper doesn't average but Probabilistic ML 2 in formula 3.53 averages
+            self.zero_grad()
+        hessian_diag = hessian_diag/subset_size #TODO consider if we should take mean or sum
+        self.train()
+        return hessian_diag
+
+    def get_heads(self):
+        heads = copy.deepcopy(self.heads)
+        return heads
+    
+    def set_heads(self, heads):
+        self.heads = copy.deepcopy(heads)
+
+    
+    def add_head(self):
+        '''
+        add a new head to the model and set active head to this head
+        '''
+        # move the old head to the same device as previous head
+        device = self.heads[-1].weight.device if len(self.heads) > 0 else self.linear.weight.device
+        new_head = nn.Linear(self.hidden_dim, self.output_dim).to(device)
+        self.heads.append(new_head)
+        self.active_head = len(self.heads)-1
+        print("Added new head, current head index: ", self.active_head)
+
+    def activate_head(self, i):
+        '''
+        activate one of the model's heads
+        '''
+        if 0 <= i < len(self.heads):
+            print("Change active head to: ",i)
+            self.active_head = i
+        else:
+            print("Head index out of bounds, active head:", self.active_head)
+
+    def get_active_head_idx(self):
+        return self.active_head
+
+    def forward(self, x):
+        #get bs
+        batch_size = x.shape[0]
+        x = x.view(batch_size, -1)
+        # fold the encoder into a layer
+
+        z = F.relu(self.linear(x))
+        
+        # forward throught head
+        y = self.heads[self.active_head](z)
+        probs = F.softmax(y, dim=-1)
+        return probs
