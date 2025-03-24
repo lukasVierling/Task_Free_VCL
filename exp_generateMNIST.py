@@ -6,17 +6,17 @@ import yaml
 import argparse
 import sys
 import os
-
+import json
 #sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #my imports
 from Generative_Algorithms.VI_algorithm import coreset_vcl
-#from Generative_Algorithms.EWC_algorithm import ewc 
-#from Generative_Algorithms.SI_algorithm import si 
-#from Generative_Algorithms.LP_algorithm import lp
+from Generative_Algorithms.EWC_algorithm import ewc 
+from Generative_Algorithms.SI_algorithm import si 
+from Generative_Algorithms.LP_algorithm import lp
 from models.VI_model import GenerativeModel as VI_model
-#from models.EWC_model import GenerativeModel as EWC_model
-#from models.SI_model import GenerativeModel as SI_model
-#from models.LP_model import GenerativeModel as LP_model
+from models.EWC_model import GenerativeModel as EWC_model
+from models.SI_model import GenerativeModel as SI_model
+from models.LP_model import GenerativeModel as LP_model
 from datasets.generateMNIST import generateMNIST
 
 from models.mnist_classifier import MNISTClassifier
@@ -112,16 +112,28 @@ def main(config_path, id="0", save=True):
     print("Finished Training!")
 
     print(f"Average Accuracies: \n {accs}")
+
+    results = {}
+    for task in range(10):
+
+        uncertainties, llhs = accs[task]
+
+        for digit, (uncertainty, llh) in enumerate(zip(uncertainties,llhs)):
+            if digit not in results:
+                results[digit] = {"uncertainty": [], "llhs":[]}
+            results[digit]["uncertainty"].append(uncertainty.item())
+            results[digit]["llhs"].append(llh.item())
+
+    print("Results: ", results)
     
-    acc_list = [ acc.item() for acc in accs]
     result_dict = {
         "config": config,
-        "accuracies": acc_list
+        "results": results
     }
-    os.makedirs('generative', exist_ok=True)
+    os.makedirs('200epochs_gen', exist_ok=True)
     #save the accs
     if save:
-        with open(f'10_epochs/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'200epochs_gen/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4)
 
 if __name__=="__main__":

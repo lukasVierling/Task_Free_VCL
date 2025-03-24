@@ -127,45 +127,19 @@ class GenerativeModel(nn.Module):
     def set_encoders(self, encoders):
         self.encoders = copy.deepcopy(encoders)
     
-    def get_var_dist(self, detach=True):
-        if detach:
-            var_dist = {"W_mu": self.W_mu.detach().clone(), 
-                        "W_sigma": self.W_sigma.detach().clone(), 
-                        "b_mu":self.b_mu.detach().clone(), 
-                        "b_sigma": self.b_sigma.detach().clone()
-                        }
-        else:
-            var_dist = {"W_mu": self.W_mu, 
-                        "W_sigma": self.W_sigma, 
-                        "b_mu":self.b_mu, 
-                        "b_sigma": self.b_sigma
-                        }
-        return var_dist
-
-    def set_var_dist(self, var_dist):
-        #get  current device
-        device = self.W_mu.device
-        # detach them from any comp graph and trainable through nn.param
-        print("Initialize the shared layer with new var_dist")
-        self.W_mu = torch.nn.Parameter(var_dist["W_mu"].detach().clone().to(device))
-        self.b_mu = torch.nn.Parameter(var_dist["b_mu"].detach().clone().to(device))
-        self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone().to(device))
-        self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone().to(device))
-
-    
     def add_head(self):
         '''
         add a new head to the model and set active head to this head
         '''
         # move the old head to the same device as previous head
-        device = self.heads[-1].weight.device if len(self.heads) > 0 else self.W_mu.device
+        device = self.heads[-1].weight.device if len(self.heads) > 0 else self.linear.weight.device
         new_head = nn.Linear(self.latent_dim, self.hidden_dim).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
         print("Added new head, current head index: ", self.active_head)
 
     def add_encoder(self):
-        device = self.encoders[-1][0].weight.device if len(self.encoders) > 0 else self.W_mu.device
+        device = self.encoders[-1][0].weight.device if len(self.encoders) > 0 else self.linear.weight.device
         new_encoder = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim),
             nn.ReLU(),
@@ -252,8 +226,6 @@ class GenerativeModel(nn.Module):
         h = F.relu(self.heads[self.active_head](z))
 
         normalized_y = F.sigmoid(self.linear(h))
-
-
 
         #normalized_y = F.sigmoid(self.last_layer(h))
 

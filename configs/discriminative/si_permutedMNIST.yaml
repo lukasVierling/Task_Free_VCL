@@ -3,6 +3,6 @@ num_tasks: 10
 epochs: 100
 lr: 0.001
 hidden_dim: 100
-c : 10
+c : 0.01
 damping_param : 0.001
 batch_size: 256

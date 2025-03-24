@@ -1,9 +1,8 @@
-algorithm_name: "VI"
+algorithm_name: "LP"
 num_tasks: 10
 epochs: 200 #should be 200
 lr: 0.0001 #reduce to 10^-4
 hidden_dim: 500
 latent_dim: 50
-coreset_size: 5000
-coreset_heuristic: "random"
+lambd: 200
 batch_size: 256

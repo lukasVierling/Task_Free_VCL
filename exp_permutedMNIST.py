@@ -112,10 +112,10 @@ def main(config_path, id="0", save=True):
         "config": config,
         "accuracies": acc_list
     }
-    os.makedirs('10_epochs', exist_ok=True)
+    os.makedirs('100_epochs', exist_ok=True)
     #save the accs
     if save:
-        with open(f'10_epochs/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'100_epochs/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4)
 
 

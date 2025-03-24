@@ -8,19 +8,21 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import math
 import os
-import torch.nn.functional as F
+
 import torch.optim as optim
+import torch.nn.functional as F
 # my imports
 from utils.utils import kl_div_gaussian
 
+def laplace_reg(model, hessian_diag, phi):
+    theta = model.get_stacked_params(detach=False)
 
-def contribution_loss(model, prev_theta, omega):
-    theta = model.get_stacked_params(detach=False) #calc gradients on it
-    squared_diff = (theta-prev_theta)**2
-    loss = omega * squared_diff
-    #print("Loss shape: ", loss.shape)
-    loss = loss.sum() #TODO maybe sum??? sum got 93->88
-    #print("after sum",loss.shape)
+    loss = 0
+    delta = theta - phi
+    #diff to EWC: only difference between previous task and current 
+    # other diff: we don't have lambda hyperparameters
+    loss = 0.5 * delta.T @ (delta * hessian_diag)
+
     return loss
 
 def vae_loss(recon_x, x, mean, log_var):
@@ -31,11 +33,11 @@ def vae_loss(recon_x, x, mean, log_var):
     kl = - 0.5 * torch.sum(1+log_var - mean**2 - torch.exp(log_var))
     return bernoulli_loss + kl #both terms are positive but then flip sign later
 
-def train_one_task(model, omega, prev_theta, c, curr_dataset, train_datasets ,batch_size, epochs, lr, device):
+def train_one_task(model, hessian_diag, phi, lambd, curr_dataset, train_datasets ,batch_size, epochs, lr, device):
     data_loader = DataLoader(curr_dataset, shuffle=True, batch_size=batch_size)
     optimizer = optim.Adam(model.parameters(), lr)
-    prev_params = model.get_stacked_params(detach=True)
-    contribution = torch.zeros_like(prev_params)
+    #print("prev theta:" ,torch.sum(phi))
+    #print("hessian diag:", torch.sum(hessian_diag))
     for epoch in tqdm(range(epochs), desc=f"Training for {epochs} epochs"):
         for x,y in tqdm(data_loader, desc=f"Train epoch {epoch}"):
             x,y = x.to(device),y.to(device)
@@ -46,27 +48,19 @@ def train_one_task(model, omega, prev_theta, c, curr_dataset, train_datasets ,ba
             #calc the VAE loss
             
             lhs = vae_loss(output, x, mean, log_var) #this is mean!
-            
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
-            if omega is not None:
+            if phi is not None:
+                rhs = lambd * laplace_reg(model, hessian_diag, phi) * batch_size #TODO Try to multily with bs
                 #rhs = 0
-                rhs = c * contribution_loss(model, prev_theta, omega) #mult with c constant #TODO consider scaling
-                #rhs = 0
+                #rhs = rhs / len(curr_dataset)
+                #print("RHS loss:", rhs)
             else:
                 rhs = 0
-            loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?
-
+            #print("Loss lhs:", lhs)
+            #print("Loss rhs:", rhs)
+            loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct? #TODO consider normalizing rhs
             loss.backward()
             optimizer.step()
-
-            #update contribution
-            grads = model.get_stacked_gradients()
-            params = model.get_stacked_params(detach=True)
-            diff = params - prev_params
-            contribution += -grads * diff
-
-            prev_params = params
-    return contribution
 
 def evaluate_on_all_tasks(task_idx, model, classifier, test_datasets, batch_size, epochs, lr, device):
     accs = []
@@ -89,6 +83,7 @@ def evaluate_on_all_tasks(task_idx, model, classifier, test_datasets, batch_size
     model.activate_encoder(prev_encoder)
     #return the accuracy
     return uncertainties, llhs
+
 
 def perform_generations(model, classifier, curr_test_dataset,batch_size,device, num_samples=1000):
     model.eval()
@@ -142,11 +137,24 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
             log_q_z = torch.sum(log_q_z, dim=1)
             log_p_z = -0.5* math.log(2*math.pi) - z**2 * 0.5
             log_p_z = torch.sum(log_p_z, dim=1)
-            
+
+            if torch.isnan(log_q_z).any():
+                print("NaN detected in log_q_z!")
+
+            if torch.isnan(log_p_z).any():
+                print("NaN detected in log_p_z!")
+                
             #obtain log likelihood
+            #numeric stability prevent NaN
             img_mean = model.decode(z)
+            eps = 1e-7 
+            img_mean = img_mean.clamp(eps, 1 - eps)
+            
             log_p_x_z = x * torch.log(img_mean) + (1-x) * torch.log(1-img_mean)
             log_p_x_z = log_p_x_z.view(batch_size*K, -1).sum(dim=1)
+
+            if torch.isnan(log_p_x_z).any():
+                print("NaN detected in log_p_x_z!")
 
             log_p_x = log_p_x_z + log_p_z - log_q_z
 
@@ -157,7 +165,11 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
             shifted = log_p_x - max_log_w
             results = max_log_w + torch.log(torch.mean(torch.exp(shifted), dim=0))
 
+            if torch.isnan(results).any():
+                print("NaN detected in results!")
+
             summed_ll += results.sum()
+
 
         average_ll = summed_ll / len(curr_test_dataset)
 
@@ -190,7 +202,7 @@ def sample_generations(model, classifier, curr_test_dataset, batch_size,device):
     # Filename
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"si_generation_{timestamp}.png"
+        filename = f"lp_generation_{timestamp}.png"
 
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path)
@@ -199,7 +211,8 @@ def sample_generations(model, classifier, curr_test_dataset, batch_size,device):
     print(f"[INFO] Saved generations to: {save_path}")
 
 
-def si(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr, damping_param, c, device="cpu"):
+
+def lp(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr, lambd, device="cpu"):
     '''
     Input:
     - prior : prior distribution
@@ -210,14 +223,9 @@ def si(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr,
     use_regularization = True #TODO remove this 
     model.to(device)
     ret = []
-    #init with covariance of gaussian prior TODO implement
-    #theta and delta saved to calc the next omega
-    prev_theta = model.get_stacked_params()#TODO probably get params
-    delta = None
-    #small omega
-    contribution =None
-    #save the Omega
-    omega = None
+    #init with covariance of gaussian prior
+    hessian_diag = torch.zeros_like(model.get_stacked_params(detach=True)).to(device) #TODO what is the properi nitialization?
+    prev_theta = None #start with MLE 
     # get the number of datasets T
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
@@ -229,30 +237,26 @@ def si(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr,
         curr_test_dataset = test_datasets[i]
         # update the coreset with D_i
         # Update the variational distribution for non-coreset data points
-        contribution = train_one_task(model, omega, prev_theta, c, curr_dataset, train_datasets ,batch_size, epochs, lr, device)
-        #calc the new theta
-        theta = model.get_stacked_params(detach=True) #TODO probably get params
-        #calc new delta
-        delta = prev_theta - theta
-        # calc new omega
-        if omega is None:
-            omega = torch.zeros_like(contribution)
-        omega += contribution / (delta**2 + damping_param)
-        #set prev_theta to current theta
-        prev_theta = theta
+        train_one_task(model, hessian_diag, prev_theta, lambd, curr_dataset, train_datasets ,batch_size, epochs, lr, device)
+        #get FIM of current model and the parameters for next loss
+        hessian_diag += model.get_fisher(curr_dataset).to(device) # directly apply the scaling
+        print("Use Fisher approximation instead of real Hessian")#TODO adjust when chagned
+        if not(use_regularization):
+            prev_theta = None
+            print("Not using regularization")
+        else:
+            prev_theta = model.get_stacked_params(detach=True).to(device) #just for computing next loss no gradients on those
+            print(f"Saved new theta of size: {prev_theta.shape}")
         
+        print(f"Saved new hessian daigonal of size: {hessian_diag.shape}")
         # evaluate the performance on all tasks
         results = evaluate_on_all_tasks(i, model, classifier, test_datasets, batch_size, epochs, lr, device)
         # Perform prediction at test input x*
-        #preds = perform_predictions(model, curr_test_dataset,device)
+        #preds = perform_generations(model, curr_test_dataset,device)
         #collect intermediate results
         ret.append(results)
-        print(f"Results of {results} after training on task {i}")
+        print(f"results of {results} after training on task {i}")
         # init the model with the previous prior so we are not influenced by the coreset training
         #model.set_var_dist(prior)TODO reconsider the placement -> should not be used after last epocch
     #return final resutls
     return ret
-
-
-
-

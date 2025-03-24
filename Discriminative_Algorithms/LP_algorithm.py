@@ -109,8 +109,8 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
         # Update the variational distribution for non-coreset data points
         train_one_task(model, hessian_diag, prev_theta, lambd, curr_dataset, train_datasets ,batch_size, epochs, lr, device)
         #get FIM of current model and the parameters for next loss
-        hessian_diag += model.get_fisher(curr_dataset).to(device) # directly apply the scaling
-        print("Use Fisher approximation instead of real Hessian")#TODO adjust when chagned
+        hessian_diag += model.get_hessian(curr_dataset).to(device) # directly apply the scaling
+        #print("Use Fisher approximation instead of real Hessian")#TODO adjust when chagned
         if not(use_regularization):
             prev_theta = None
             print("Not using regularization")
