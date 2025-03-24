@@ -5,3 +5,4 @@ data/
 .conda/
 MutualInfo_test.ipynb
 MNISTClassifier.ipynb*.ipynb
+outputs/
