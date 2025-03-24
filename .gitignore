@@ -3,3 +3,5 @@ output/
 __pycache__/
 data/
 .conda/
+MutualInfo_test.ipynb
+MNISTClassifier.ipynb*.ipynb
