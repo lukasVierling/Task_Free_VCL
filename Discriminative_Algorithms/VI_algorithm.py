@@ -4,7 +4,7 @@ import numpy as np
 from torch.utils.data import ConcatDataset, DataLoader, TensorDataset,Subset
 from tqdm import tqdm
 import copy
-
+import torch.nn.functional as F
 # my imports
 from utils.utils import kl_div_gaussian
 
@@ -86,14 +86,22 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             #forward through the model to get likelihood
             output = model(x) #-> returns [B,C]
             #calc the likelihood
-            probs = output.gather(1, y.view(-1, 1)).squeeze() # index output to get [B]
-            log_probs = torch.log(probs + 1e-8) #for numeric stability
-            lhs = log_probs.mean() #TODO should we do mean or sum and should we divide? 
+            if model.mode == "regression":
+                #in regression mode no softmax over output
+                #create one hot vectors R^10
+                one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
+                #calc MSE
+                lhs = -0.5* F.mse_loss(output, one_hot_labels, reduction="mean") / ( 1**2) #assume sigma = 1 but maybe change alter
+
+            else:
+                probs = output.gather(1, y.view(-1, 1)).squeeze() # index output to get [B]
+                log_probs = torch.log(probs + 1e-8) #for numeric stability
+                lhs = log_probs.mean() #TODO should we do mean or sum and should we divide? 
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if prior is not None:
                 rhs = kl_div_gaussian(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
-                rhs = rhs/len(dataset) #TODO should be multiplied with batch_size/len(dataset)
-                #rhs = 0
+                rhs = rhs/len(dataset) #TODO should be multiplied with batch_size/len(dataset) or divide by len(data_loader)
+                #rhs = 0 
             else:
                 rhs = 0
             loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo

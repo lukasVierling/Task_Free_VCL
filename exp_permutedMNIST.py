@@ -59,7 +59,8 @@ def main(config_path, id="0", save=True):
         #coreset
         coreset_size = config["coreset_size"]
         coreset_heuristic = config["coreset_heuristic"]
-        print(f"VI parameters for coreset:\n   coreset_size:{coreset_size} \n   coreset_heuristic:{coreset_heuristic}")
+        mode = config["mode"]
+        print(f"VI parameters for coreset:\n   coreset_size:{coreset_size} \n   coreset_heuristic:{coreset_heuristic}\n    mode: {mode}")
         alg_args = {"coreset_size":coreset_size, "coreset_heuristic": coreset_heuristic}
     elif algorithm_name == "EWC":
         model_class = EWC_model
@@ -96,7 +97,7 @@ def main(config_path, id="0", save=True):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Training no device:", device)
 
-    model = model_class(input_dim, output_dim, hidden_dim)
+    model = model_class(input_dim, output_dim, hidden_dim, mode)
 
     print(f"Generated model with input_dim: {input_dim} and output_dim: {output_dim} \n Model: {model}")
 

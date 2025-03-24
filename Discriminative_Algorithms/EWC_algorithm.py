@@ -94,7 +94,7 @@ def ewc(model, train_datasets, test_datasets, batch_size, epochs, lr, lambdas, d
     ret = []
     #init with covariance of gaussian prior TODO implement
     fisher_diags = {}
-    thetas = {} #start with MLE 
+    thetas = {} #start with MLE
     # get the number of datasets T
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):

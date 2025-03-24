@@ -7,11 +7,14 @@ import math
 import copy
 
 class DiscriminativeModel(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim):
+    def __init__(self, input_dim, output_dim, hidden_dim, mode="bernoulli"):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
+        self.mode = mode
+        if self.mode != "bernoulli" and self.mode !="regression":
+            print("Please choose a valid mode for the model!")
         k = 1 / input_dim
         # first hidden layer -> fld layer in one parameter vector
         # Bayesian first hidden layer parameters (mean & log variance)
@@ -98,7 +101,10 @@ class DiscriminativeModel(nn.Module):
 
         # forward throught head
         y = self.heads[self.active_head](z)
-        probs = F.softmax(y, dim=-1)
+        if self.mode == "bernoulli":
+            probs = F.softmax(y, dim=-1)
+        elif self.mode=="regression":
+            probs = y
         return probs
 
 
