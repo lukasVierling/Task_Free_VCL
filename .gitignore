@@ -7,3 +7,5 @@ MutualInfo_test.ipynb
 MNISTClassifier.ipynb
 *.ipynb
 outputs/
+*.ipynb
+.ipynb_checkpoints/
