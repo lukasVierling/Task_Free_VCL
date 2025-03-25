@@ -6,13 +6,68 @@ import math
 
 import copy
 
+class BayesianLayer(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        k = 1 / input_dim
+        self.W_mu = nn.Parameter(torch.rand(input_dim, output_dim) * 2 * math.sqrt(k)-math.sqrt(k)) #TODO check if better when sampling form U(sqrt(k), sqrt(k))
+        #self.W_mu = nn.Parameter(torch.empty(input_dim, hidden_dim))
+        #nn.init.kaiming_uniform_(self.W_mu, a=math.sqrt(5))
+        self.b_mu = nn.Parameter(torch.rand(output_dim) * 2 * math.sqrt(k)-math.sqrt(k))
+        self.W_sigma = nn.Parameter(torch.randn(input_dim, output_dim) * 0.1 - 6)
+        self.b_sigma = nn.Parameter(torch.randn(output_dim) * 0.1- 6) #TODO Going form -3 to -7 increase acc by 10%!!
+    
+    def get_var_dist(self, detach=True):
+        if detach:
+            var_dist = {"W_mu": self.W_mu.detach().clone(), 
+                        "W_sigma": self.W_sigma.detach().clone(), 
+                        "b_mu":self.b_mu.detach().clone(), 
+                        "b_sigma": self.b_sigma.detach().clone()
+                        }
+        else:
+            var_dist = {"W_mu": self.W_mu, 
+                        "W_sigma": self.W_sigma, 
+                        "b_mu":self.b_mu, 
+                        "b_sigma": self.b_sigma
+                        }
+        return var_dist
+    
+    def set_var_dist(self, var_dist):
+        #get  current device
+        device = self.W_mu.device
+        # detach them from any comp graph and trainable through nn.param
+        print("Initialize the shared layer with new var_dist")
+        self.W_mu = torch.nn.Parameter(var_dist["W_mu"].detach().clone().to(device))
+        self.b_mu = torch.nn.Parameter(var_dist["b_mu"].detach().clone().to(device))
+        self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone().to(device))
+        self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone().to(device))  
+        
+    
+    def forward(self, x):
+        #get bs
+        # fold the encoder into a layer
+
+        W_epsilon = torch.randn_like(self.W_sigma) #randn for normal dist (0,1) default
+        b_epsilon = torch.randn_like(self.b_sigma)
+
+        W = self.W_mu + torch.exp(0.5*self.W_sigma) * W_epsilon
+        b = self.b_mu + torch.exp(0.5*self.b_sigma) * b_epsilon
+        
+        # forward through first layer
+        z = x @ W  + b
+
+        return z
+
 class DiscriminativeModel(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim, mode="bernoulli"):
+    def __init__(self, input_dim, output_dim, hidden_dim, mode="bernoulli", single_head=True):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.mode = mode
+        self.single_head = single_head
         if self.mode != "bernoulli" and self.mode !="regression":
             print("Please choose a valid mode for the model!")
         k = 1 / input_dim
@@ -22,11 +77,14 @@ class DiscriminativeModel(nn.Module):
         #self.W_mu = nn.Parameter(torch.empty(input_dim, hidden_dim))
         #nn.init.kaiming_uniform_(self.W_mu, a=math.sqrt(5))
         self.b_mu = nn.Parameter(torch.rand(hidden_dim) * 2 * math.sqrt(k)-math.sqrt(k))
-        self.W_sigma = nn.Parameter(torch.randn(input_dim, hidden_dim) * 0.1 - 7.0)
-        self.b_sigma = nn.Parameter(torch.randn(hidden_dim) * 0.1- 7.0) #TODO Going form -3 to -7 increase acc by 10%!!
+        self.W_sigma = nn.Parameter(torch.randn(input_dim, hidden_dim) * 0.1 - 6.0)
+        self.b_sigma = nn.Parameter(torch.randn(hidden_dim) * 0.1- 6.0) #TODO Going form -3 to -7 increase acc by 10%!!
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
+        if self.single_head:
+            print("Train on single head")
+            self.add_head()
 
     def get_heads(self):
         heads = copy.deepcopy(self.heads)
@@ -48,6 +106,12 @@ class DiscriminativeModel(nn.Module):
                         "b_mu":self.b_mu, 
                         "b_sigma": self.b_sigma
                         }
+            
+        var_dist["heads"] = []
+        
+        for head_idx in range(len(self.heads)):
+            var_dist["heads"].append(self.heads[head_idx].get_var_dist(detach=detach))
+            
         return var_dist
 
     def set_var_dist(self, var_dist):
@@ -60,14 +124,16 @@ class DiscriminativeModel(nn.Module):
         self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone().to(device))
         self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone().to(device))
 
+        for head_idx, head_dist in enumerate(var_dist["heads"]):
+            self.heads[head_idx].set_var_dist(head_dist)
     
     def add_head(self):
         '''
         add a new head to the model and set active head to this head
         '''
         # move the old head to the same device as previous head
-        device = self.heads[-1].weight.device if len(self.heads) > 0 else self.W_mu.device
-        new_head = nn.Linear(self.hidden_dim, self.output_dim).to(device)
+        device = self.self.heads[-1].W_mu.device if len(self.heads) > 0 else self.W_mu.device
+        new_head = BayesianLayer(self.hidden_dim, self.output_dim).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
         print("Added new head, current head index: ", self.active_head)
@@ -81,6 +147,7 @@ class DiscriminativeModel(nn.Module):
             self.active_head = i
         else:
             print("Head index out of bounds, active head:", self.active_head)
+
     def get_active_head_idx(self):
         return self.active_head
 
@@ -101,6 +168,7 @@ class DiscriminativeModel(nn.Module):
 
         # forward throught head
         y = self.heads[self.active_head](z)
+
         if self.mode == "bernoulli":
             probs = F.softmax(y, dim=-1)
         elif self.mode=="regression":
@@ -185,6 +253,8 @@ class GenerativeModel(nn.Module):
         '''
         add a new head to the model and set active head to this head
         '''
+        if self.single_head and len(self.heads) > 0:
+            print(" ---------- \n\n\nWarning! Can't add more heads in single head mode! \n\n\n ---------- \n\n\n")
         # move the old head to the same device as previous head
         device = self.heads[-1].weight.device if len(self.heads) > 0 else self.W_mu.device
         new_head = nn.Linear(self.latent_dim, self.hidden_dim).to(device)

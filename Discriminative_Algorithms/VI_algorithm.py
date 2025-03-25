@@ -8,16 +8,6 @@ import torch.nn.functional as F
 # my imports
 from utils.utils import kl_div_gaussian
 
-def init_coreset_variational_approx(prior):
-    '''
-    Input:
-    - prior: prior distirbution
-    Output:
-    - coreset: the initial coreset
-    - var_approx: the initial variational approximation
-    '''
-    var_approx = prior
-    return None, var_approx
 
 def new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=500, heuristic="random"):
     '''
@@ -100,7 +90,7 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if prior is not None:
                 rhs = kl_div_gaussian(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
-                rhs = rhs/len(dataset) #TODO should be multiplied with batch_size/len(dataset) or divide by len(data_loader)
+                rhs = rhs/len(dataset) #*batch_size
                 #rhs = 0 
             else:
                 rhs = 0
@@ -108,15 +98,13 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             loss.backward()
             optimizer.step()
 
-def update_final_var_dist_and_test(task_idx, model, prior ,prior_heads, curr_coreset, test_datasets, batch_size, epochs, lr, device):
+def update_final_var_dist_and_test(task_idx, model, prior, prior_heads, curr_coreset, test_datasets, batch_size, epochs, lr, device):
     # get a new distribution q
     accs = []
     prev_head = model.get_active_head_idx()
     #optimize the KL between q_t tilde and q_t with likelihood over coreset_t
     if curr_coreset is not None:
         for idx, coreset in enumerate(curr_coreset[:task_idx+1]):
-            #print("Length of core sets:" len(curr_coreset[:task_idx+1]))
-            #print("test dataset idx:", idx)
             #coreset is a small dataset
             #activate the head for this dataset
             model.activate_head(idx)
@@ -150,22 +138,32 @@ def update_final_var_dist_and_test(task_idx, model, prior ,prior_heads, curr_cor
 def perform_predictions(model, curr_test_dataset,batch_size,device):
     data_loader = DataLoader(curr_test_dataset, batch_size=batch_size)
     labels = []
+    squared_errors = []
     correct = 0
     model.eval()
     with torch.no_grad():
         for x,y in tqdm(data_loader,desc="Testing Performance"):
             x,y = x.to(device),y.to(device)
             probs = model(x)
-            pred = torch.argmax(probs, dim=-1)
-            correct += torch.sum(pred == y)
-            #print(pred.shape)
-            labels.extend(pred.tolist())
+            if model.mode == "regression":
+                one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
+                se = F.mse_loss(probs, one_hot_labels, reduction="sum")
+                squared_errors.append(se.item())
+            else:
+                pred = torch.argmax(probs, dim=-1)
+                correct += torch.sum(pred == y)
+                #print(pred.shape)
+                labels.extend(pred.tolist())
 
     model.train()
     labels = torch.tensor(labels)
     #print("Tested with accuracy: " ,correct/len(labels))
-    acc = correct/len(labels)
-    return acc
+    if model.mode == "regression":
+        total = torch.tensor(sum(squared_errors))
+        metrics = torch.sqrt(total /(len(curr_test_dataset) * model.output_dim))
+    else:
+        metrics = correct/len(labels)
+    return metrics
 
 def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random", device="cpu"):
     '''
@@ -190,7 +188,8 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model
-        model.add_head()
+        if not(model.single_head):
+            model.add_head()
         #TODO do we have to reinitialize the model here? 
         # get the current dataset D_i
         curr_dataset = train_datasets[i]

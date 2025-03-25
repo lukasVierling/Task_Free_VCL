@@ -60,14 +60,17 @@ def main(config_path, id="0", save=True):
         coreset_size = config["coreset_size"]
         coreset_heuristic = config["coreset_heuristic"]
         mode = config["mode"]
-        print(f"VI parameters for coreset:\n   coreset_size:{coreset_size} \n   coreset_heuristic:{coreset_heuristic}\n    mode: {mode}")
+        single_head = config["single_head"]
+        print(f"VI parameters for coreset:\n   coreset_size:{coreset_size} \n   coreset_heuristic:{coreset_heuristic}\n    mode: {mode} \n    single head:{single_head}")
         alg_args = {"coreset_size":coreset_size, "coreset_heuristic": coreset_heuristic}
+        model_args = {"mode": mode, "single_head": single_head}
     elif algorithm_name == "EWC":
         model_class = EWC_model
         CL_algorithm = ewc
         lambdas = config["lambdas"]
         print(f"EWC parameters:\n   lambdas:{lambdas}")
         alg_args = {"lambdas": lambdas}
+        model_args = {}
     elif algorithm_name =="SI":
         model_class = SI_model
         CL_algorithm = si
@@ -75,13 +78,14 @@ def main(config_path, id="0", save=True):
         damping_param = config["damping_param"]
         print(f"SI parameters:\n    c:{c}\n    damping_param:{damping_param}")
         alg_args = { "damping_param":damping_param, "c": c}
+        model_args = {}
     elif algorithm_name =="LP":
         model_class = LP_model
         CL_algorithm = lp
         lambd = config["lambd"]
         print(f"LP parameters:\n    lambda:{lambd}")
         alg_args = {"lambd":lambd}
-        
+        model_args = {}
 
     train_tasks = []
     test_tasks = []
@@ -97,7 +101,7 @@ def main(config_path, id="0", save=True):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Training no device:", device)
 
-    model = model_class(input_dim, output_dim, hidden_dim, mode)
+    model = model_class(input_dim, output_dim, hidden_dim, **model_args)
 
     print(f"Generated model with input_dim: {input_dim} and output_dim: {output_dim} \n Model: {model}")
 

@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Subset
 
 
 class DiscriminativeModel(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim):
+    def __init__(self, input_dim, output_dim, hidden_dim, single_head=True):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -19,14 +19,38 @@ class DiscriminativeModel(nn.Module):
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
+        self.single_head = single_head
+        if self.single_head:
+            self.add_head()
 
     def get_stacked_params(self, detach=True):
         if detach:
-            params = [self.linear.weight.clone().detach().view(-1),
-                self.linear.bias.clone().detach().view(-1)]
+            params = [
+                self.linear.weight.clone().detach().view(-1),
+                self.linear.bias.clone().detach().view(-1)
+                ]
+
+            if self.single_head:
+                head = self.heads[-1]
+                head_params = [
+                        head.weight.clone().detach().view(-1),
+                        head.bias.clone().detach().view(-1)
+                        ]
+                #concat the heads
+                params = params + head_params
         else:
             params = [self.linear.weight.view(-1),
                 self.linear.bias.view(-1)]
+            
+            if self.single_head:
+                head = self.heads[-1]
+                head_params = [
+                        head.weight.view(-1),
+                        head.bias.view(-1)
+                ]
+                #concat the heads
+                params = params + head_params
+
         params = torch.cat(params)
         return params
 
@@ -52,6 +76,12 @@ class DiscriminativeModel(nn.Module):
             # concat and flatten all the gradients
             grads = torch.cat([self.linear.weight.grad.clone().detach().view(-1),
                                  self.linear.bias.grad.clone().detach().view(-1)])
+            if self.single_head:
+                #should only be a single head there
+                head = self.heads[-1]
+                head_grads = torch.cat([head.weight.grad.clone().detach().view(-1),
+                                 head.bias.grad.clone().detach().view(-1)])
+                grads = torch.cat([grads, head_grads])
             #square the gradient
             squared_grads = grads ** 2
             if fisher_diag is None:
@@ -76,6 +106,8 @@ class DiscriminativeModel(nn.Module):
         '''
         add a new head to the model and set active head to this head
         '''
+        if self.single_head and len(self.heads) > 0:
+            print(" ---------- \n\n\nWarning! Can't add more heads in single head mode! \n\n\n ---------- \n\n\n")
         # move the old head to the same device as previous head
         device = self.heads[-1].weight.device if len(self.heads) > 0 else self.linear.weight.device
         new_head = nn.Linear(self.hidden_dim, self.output_dim).to(device)

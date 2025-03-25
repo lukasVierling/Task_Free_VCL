@@ -1,6 +1,19 @@
 import torch
 
 def kl_div_gaussian(p,q):
+    encoder_loss = kl_div_gaussian_layer(p,q)
+    #should usually be only 1 head for single head setup
+    head_loss = 0
+    p_heads = p["heads"]
+    q_heads = q["heads"]
+    if len(q_heads) > 1:
+        print("Warning, calc kl div over more than one head!")
+    for p,q in zip(p_heads, q_heads):
+        head_loss += kl_div_gaussian_layer(p,q)
+    return encoder_loss + head_loss
+
+
+def kl_div_gaussian_layer(p,q):
     '''
     calculates KL(p||q) in closed form solution
     '''

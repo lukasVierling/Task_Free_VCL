@@ -99,7 +99,8 @@ def ewc(model, train_datasets, test_datasets, batch_size, epochs, lr, lambdas, d
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model
-        model.add_head()
+        if not(model.single_head):
+            model.add_head()
         # get the current dataset D_i and train set
         curr_dataset = train_datasets[i]
         curr_test_dataset = test_datasets[i]
