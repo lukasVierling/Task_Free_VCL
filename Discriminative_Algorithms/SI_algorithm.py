@@ -56,7 +56,8 @@ def evaluate_on_all_tasks(task_idx, model, test_datasets, batch_size, epochs, lr
     prev_head = model.get_active_head_idx()
     for head_idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
         #excluseive 
-        model.activate_head(head_idx)
+        if not(model.single_head):
+            model.activate_head(head_idx)
         #append the accuracy
         accs.append(perform_predictions(model, test_dataset, batch_size, device))
         print(f"Got accuracy of {accs[-1]*100}%")
@@ -95,12 +96,11 @@ def si(model, train_datasets, test_datasets, batch_size, epochs, lr, damping_par
     Output: 
     - [(q_t,p_t)] t=1,...,T : Variational and predictive distribution at each step
     '''
-    use_regularization = True #TODO remove this 
     model.to(device)
     ret = []
     #init with covariance of gaussian prior TODO implement
     #theta and delta saved to calc the next omega
-    prev_theta = model.get_stacked_params()#TODO probably get params
+    prev_theta = model.get_stacked_params(detach=True)#TODO probably get params
     delta = None
     #small omega
     contribution =None
@@ -110,7 +110,8 @@ def si(model, train_datasets, test_datasets, batch_size, epochs, lr, damping_par
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model
-        model.add_head()
+        if not(model.single_head):
+            model.add_head()
         # get the current dataset D_i and train set
         curr_dataset = train_datasets[i]
         curr_test_dataset = test_datasets[i]

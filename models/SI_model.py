@@ -5,7 +5,7 @@ import torch.optim as optim
 
 class DiscriminativeModel(nn.Module):
 
-    def __init__(self, input_dim, output_dim, hidden_dim):
+    def __init__(self, input_dim, output_dim, hidden_dim, single_head=True):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -16,6 +16,10 @@ class DiscriminativeModel(nn.Module):
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
+        self.single_head = single_head
+        if self.single_head:
+            self.add_head()
+            print("using single head")
 
     def get_heads(self):
         heads = copy.deepcopy(self.heads)
@@ -50,17 +54,43 @@ class DiscriminativeModel(nn.Module):
     
     def get_stacked_params(self, detach=True):
         if detach:
-            params = [self.linear.weight.clone().detach().view(-1),
-                self.linear.bias.clone().detach().view(-1)]
+            params = [
+                self.linear.weight.clone().detach().view(-1),
+                self.linear.bias.clone().detach().view(-1)
+                ]
+
+            if self.single_head:
+                head = self.heads[-1]
+                head_params = [
+                        head.weight.clone().detach().view(-1),
+                        head.bias.clone().detach().view(-1)
+                        ]
+                #concat the heads
+                params = params + head_params
         else:
             params = [self.linear.weight.view(-1),
                 self.linear.bias.view(-1)]
+            
+            if self.single_head:
+                head = self.heads[-1]
+                head_params = [
+                        head.weight.view(-1),
+                        head.bias.view(-1)
+                ]
+                #concat the heads
+                params = params + head_params
+
         params = torch.cat(params)
         return params
     
     def get_stacked_gradients(self):
         grads = [self.linear.weight.grad.view(-1).detach().clone(),
                 self.linear.bias.grad.view(-1).detach().clone()]
+        if self.single_head:
+            head = self.heads[-1]
+            head_grads = [head.weight.grad.view(-1).detach().clone(),
+                head.bias.grad.view(-1).detach().clone()]
+            grads = grads + head_grads
         return torch.cat(grads)
 
     def forward(self, x):

@@ -18,7 +18,7 @@ class BayesianLayer(nn.Module):
         self.b_mu = nn.Parameter(torch.rand(output_dim) * 2 * math.sqrt(k)-math.sqrt(k))
         self.W_sigma = nn.Parameter(torch.randn(input_dim, output_dim) * 0.1 - 6)
         self.b_sigma = nn.Parameter(torch.randn(output_dim) * 0.1- 6) #TODO Going form -3 to -7 increase acc by 10%!!
-    
+
     def get_var_dist(self, detach=True):
         if detach:
             var_dist = {"W_mu": self.W_mu.detach().clone(), 
@@ -70,15 +70,10 @@ class DiscriminativeModel(nn.Module):
         self.single_head = single_head
         if self.mode != "bernoulli" and self.mode !="regression":
             print("Please choose a valid mode for the model!")
-        k = 1 / input_dim
         # first hidden layer -> fld layer in one parameter vector
         # Bayesian first hidden layer parameters (mean & log variance)
-        self.W_mu = nn.Parameter(torch.rand(input_dim, hidden_dim) * 2 * math.sqrt(k)-math.sqrt(k)) #TODO check if better when sampling form U(sqrt(k), sqrt(k))
-        #self.W_mu = nn.Parameter(torch.empty(input_dim, hidden_dim))
-        #nn.init.kaiming_uniform_(self.W_mu, a=math.sqrt(5))
-        self.b_mu = nn.Parameter(torch.rand(hidden_dim) * 2 * math.sqrt(k)-math.sqrt(k))
-        self.W_sigma = nn.Parameter(torch.randn(input_dim, hidden_dim) * 0.1 - 6.0)
-        self.b_sigma = nn.Parameter(torch.randn(hidden_dim) * 0.1- 6.0) #TODO Going form -3 to -7 increase acc by 10%!!
+        self.encoder1 = BayesianLayer(input_dim, hidden_dim)
+        self.encoder2 = BayesianLayer(hidden_dim, hidden_dim)
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
@@ -94,35 +89,22 @@ class DiscriminativeModel(nn.Module):
         self.heads = copy.deepcopy(heads)
     
     def get_var_dist(self, detach=True):
-        if detach:
-            var_dist = {"W_mu": self.W_mu.detach().clone(), 
-                        "W_sigma": self.W_sigma.detach().clone(), 
-                        "b_mu":self.b_mu.detach().clone(), 
-                        "b_sigma": self.b_sigma.detach().clone()
-                        }
-        else:
-            var_dist = {"W_mu": self.W_mu, 
-                        "W_sigma": self.W_sigma, 
-                        "b_mu":self.b_mu, 
-                        "b_sigma": self.b_sigma
-                        }
-            
-        var_dist["heads"] = []
+        var_dist = {}
+        var_dist["encoder1"] = self.encoder1.get_var_dist(detach)
+        var_dist["encoder2"] = self.encoder2.get_var_dist(detach)
         
+        var_dist["heads"] = []
+
         for head_idx in range(len(self.heads)):
             var_dist["heads"].append(self.heads[head_idx].get_var_dist(detach=detach))
             
         return var_dist
 
     def set_var_dist(self, var_dist):
-        #get  current device
-        device = self.W_mu.device
         # detach them from any comp graph and trainable through nn.param
         print("Initialize the shared layer with new var_dist")
-        self.W_mu = torch.nn.Parameter(var_dist["W_mu"].detach().clone().to(device))
-        self.b_mu = torch.nn.Parameter(var_dist["b_mu"].detach().clone().to(device))
-        self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone().to(device))
-        self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone().to(device))
+        self.encoder1.set_var_dist(var_dist["encoder1"])
+        self.encoder2.set_var_dist(var_dist["encoder2"])
 
         for head_idx, head_dist in enumerate(var_dist["heads"]):
             self.heads[head_idx].set_var_dist(head_dist)
@@ -131,8 +113,10 @@ class DiscriminativeModel(nn.Module):
         '''
         add a new head to the model and set active head to this head
         '''
+        if self.single_head and len(self.heads) > 0:
+            print(" ---------- \n\n\nWarning! Can't add more heads in single head mode! \n\n\n ---------- \n\n\n")
         # move the old head to the same device as previous head
-        device = self.self.heads[-1].W_mu.device if len(self.heads) > 0 else self.W_mu.device
+        device = self.heads[-1].W_mu.device if len(self.heads) > 0 else self.encoder1.W_mu.device
         new_head = BayesianLayer(self.hidden_dim, self.output_dim).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
@@ -156,15 +140,10 @@ class DiscriminativeModel(nn.Module):
         batch_size = x.shape[0]
         x = x.view(batch_size, -1)
         # fold the encoder into a layer
-
-        W_epsilon = torch.randn_like(self.W_sigma) #randn for normal dist (0,1) default
-        b_epsilon = torch.randn_like(self.b_sigma)
-
-        W = self.W_mu + torch.exp(0.5*self.W_sigma) * W_epsilon
-        b = self.b_mu + torch.exp(0.5*self.b_sigma) * b_epsilon
-        
-        # forward through first layer
-        z = F.relu(x @ W  + b)
+        z = self.encoder1(x)
+        z = F.relu(z)
+        z = self.encoder2(z)
+        z = F.relu(z)
 
         # forward throught head
         y = self.heads[self.active_head](z)
@@ -253,8 +232,6 @@ class GenerativeModel(nn.Module):
         '''
         add a new head to the model and set active head to this head
         '''
-        if self.single_head and len(self.heads) > 0:
-            print(" ---------- \n\n\nWarning! Can't add more heads in single head mode! \n\n\n ---------- \n\n\n")
         # move the old head to the same device as previous head
         device = self.heads[-1].weight.device if len(self.heads) > 0 else self.W_mu.device
         new_head = nn.Linear(self.latent_dim, self.hidden_dim).to(device)

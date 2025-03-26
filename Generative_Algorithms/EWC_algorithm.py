@@ -84,7 +84,7 @@ def evaluate_on_all_tasks(task_idx, model, classifier, test_datasets, batch_size
     return uncertainties, llhs
 
 
-def perform_generations(model, classifier, curr_test_dataset,batch_size,device, num_samples=1000):
+def perform_generations(model, classifier, curr_test_dataset,batch_size,device, num_samples=5000):
     model.eval()
     label = curr_test_dataset.label
     classifier.to(device)
@@ -112,7 +112,7 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
         #go over test set
         summed_ll = 0
         test_loader = DataLoader(curr_test_dataset, shuffle=False, batch_size = 1)
-        K =100
+        K = num_samples
         for x,_ in test_loader:
             x = x.to(device)
             batch_size = x.shape[0]

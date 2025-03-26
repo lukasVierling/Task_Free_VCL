@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 
 class DiscriminativeModel(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim):
+    def __init__(self, input_dim, output_dim, hidden_dim, single_head=True):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -20,19 +20,43 @@ class DiscriminativeModel(nn.Module):
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
+        self.single_head = single_head
+        if self.single_head:
+            print("using single head")
+            self.add_head()
 
     def get_stacked_params(self, detach=True):
         if detach:
-            params = [self.linear.weight.clone().detach().view(-1),
-                self.linear.bias.clone().detach().view(-1)]
+            params = [
+                self.linear.weight.clone().detach().view(-1),
+                self.linear.bias.clone().detach().view(-1)
+                ]
+
+            if self.single_head:
+                head = self.heads[-1]
+                head_params = [
+                        head.weight.clone().detach().view(-1),
+                        head.bias.clone().detach().view(-1)
+                        ]
+                #concat the heads
+                params = params + head_params
         else:
             params = [self.linear.weight.view(-1),
                 self.linear.bias.view(-1)]
+            
+            if self.single_head:
+                head = self.heads[-1]
+                head_params = [
+                        head.weight.view(-1),
+                        head.bias.view(-1)
+                ]
+                #concat the heads
+                params = params + head_params
+
         params = torch.cat(params)
         return params
 
-
-    def get_fisher(self, dataset,sample_size=50000):
+    def get_fisher(self, dataset,sample_size=600):
         fisher_diag = None
         self.eval()
         batch_size = 1 #to prevent weird errors from summing before squaring
@@ -48,12 +72,18 @@ class DiscriminativeModel(nn.Module):
             output = self(x)
             probs = output.gather(1, y.view(-1, 1)).squeeze() # get p(y_t | theta, x_t)
             log_probs = torch.log(probs + 1e-8) #calc log(p(..))
-            loss = log_probs.sum() #Sign shouldn't matter #take sum because we have bs=1 anyway 
+            loss = -log_probs.mean() #Sign shouldn't matter
             #take the gradient
             loss.backward()
             # concat and flatten all the gradients
             grads = torch.cat([self.linear.weight.grad.clone().detach().view(-1),
                                  self.linear.bias.grad.clone().detach().view(-1)])
+            if self.single_head:
+                #should only be a single head there
+                head = self.heads[-1]
+                head_grads = torch.cat([head.weight.grad.clone().detach().view(-1),
+                                 head.bias.grad.clone().detach().view(-1)])
+                grads = torch.cat([grads, head_grads])
             #square the gradient
             squared_grads = grads ** 2
             if fisher_diag is None:
@@ -65,7 +95,6 @@ class DiscriminativeModel(nn.Module):
         fisher_diag = fisher_diag/sample_size #TODO consider if we should take mean or sum
         self.train()
         return fisher_diag
-
     
 
     def get_hessian(self, dataset, subset_size = 500):

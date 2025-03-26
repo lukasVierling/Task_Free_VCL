@@ -1,7 +1,8 @@
 algorithm_name: "LP"
 num_tasks: 10
-epochs: 100
+epochs: 20
 lr: 0.001
 hidden_dim: 100
 lambd: 100 #try values like 100
 batch_size: 256
+single_head : True

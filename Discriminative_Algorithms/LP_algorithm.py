@@ -52,7 +52,8 @@ def evaluate_on_all_tasks(task_idx, model, test_datasets, batch_size, epochs, lr
     prev_head = model.get_active_head_idx()
     for head_idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
         #excluseive 
-        model.activate_head(head_idx)
+        if not(model.single_head):
+            model.activate_head(head_idx)
         #append the accuracy
         accs.append(perform_predictions(model, test_dataset, batch_size, device))
         print(f"Got accuracy of {accs[-1]*100}%")
@@ -101,7 +102,8 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model
-        model.add_head()
+        if not(model.single_head):
+            model.add_head()
         # get the current dataset D_i and train set
         curr_dataset = train_datasets[i]
         curr_test_dataset = test_datasets[i]
@@ -109,8 +111,8 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
         # Update the variational distribution for non-coreset data points
         train_one_task(model, hessian_diag, prev_theta, lambd, curr_dataset, train_datasets ,batch_size, epochs, lr, device)
         #get FIM of current model and the parameters for next loss
-        hessian_diag += model.get_hessian(curr_dataset).to(device) # directly apply the scaling
-        #print("Use Fisher approximation instead of real Hessian")#TODO adjust when chagned
+        hessian_diag += model.get_fisher(curr_dataset).to(device) # directly apply the scaling
+        print("Use Fisher approximation instead of real Hessian")#TODO adjust when chagned
         if not(use_regularization):
             prev_theta = None
             print("Not using regularization")

@@ -6,7 +6,7 @@ from tqdm import tqdm
 import copy
 import torch.nn.functional as F
 # my imports
-from utils.utils import kl_div_gaussian
+from utils.utils import kl_div_gaussian, get_standard_normal_prior, get_mle_estimate
 
 
 def new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=500, heuristic="random"):
@@ -90,10 +90,11 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if prior is not None:
                 rhs = kl_div_gaussian(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
-                rhs = rhs/len(dataset) #*batch_size
+                rhs = rhs/len(dataset)
                 #rhs = 0 
             else:
                 rhs = 0
+            #print(f"Epoch {epoch}: Log-Likelihood = {lhs.item()}, KL = {rhs.item()}")
             loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo
             loss.backward()
             optimizer.step()
@@ -104,22 +105,38 @@ def update_final_var_dist_and_test(task_idx, model, prior, prior_heads, curr_cor
     prev_head = model.get_active_head_idx()
     #optimize the KL between q_t tilde and q_t with likelihood over coreset_t
     if curr_coreset is not None:
-        for idx, coreset in enumerate(curr_coreset[:task_idx+1]):
-            #coreset is a small dataset
-            #activate the head for this dataset
-            model.activate_head(idx)
-            print("test acc before additional finetuning: ",perform_predictions(model, test_datasets[idx], batch_size, device))#try smaller
-            epochs=10 #try less epochs for coreset training to prevent overfitting on small DS
-            print("First number of the current test ds permutation is: ", test_datasets[idx].get_permutation()[0])
-            print("First number of the current coreset ds permutation is: ", coreset.dataset.get_permutation()[0])
-            minimize_KL(model, prior, coreset ,batch_size, epochs, lr, device)
-            #obtained finetuned model for dataset head_idx
-            #test on the test dataset
-            accs.append(perform_predictions(model, test_datasets[idx], batch_size, device))
-            print("test acc after additional finetuning: ",accs[-1])
-            #reset the finetuning
+        if model.single_head:
+            all_coresets = ConcatDataset(curr_coreset[:task_idx+1])
+            minimize_KL(model, prior, all_coresets ,batch_size, epochs, lr, device)
+            #done with finetuning on coreset data
+            for idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
+                #coreset is a small dataset
+                #activate the head for this dataset
+                #test on the test dataset
+                accs.append(perform_predictions(model, test_dataset,batch_size, device))
+                print("test acc after additional finetuning: ",accs[-1])
+                #reset the finetuning
             model.set_var_dist(prior)
-            model.set_heads(prior_heads)
+
+        else:
+            for idx, coreset in enumerate(curr_coreset[:task_idx+1]):
+                #coreset is a small dataset
+                #activate the head for this dataset
+                if not(model.single_head):
+                    model.activate_head(idx)
+                print("test acc before additional finetuning: ",perform_predictions(model, test_datasets[idx], batch_size, device))#try smaller
+                epochs=10 #try less epochs for coreset training to prevent overfitting on small DS
+                print("First number of the current test ds permutation is: ", test_datasets[idx].get_permutation()[0])
+                print("First number of the current coreset ds permutation is: ", coreset.dataset.get_permutation()[0])
+                minimize_KL(model, prior, coreset ,batch_size, epochs, lr, device)
+                #obtained finetuned model for dataset head_idx
+                #test on the test dataset
+                accs.append(perform_predictions(model, test_datasets[idx], batch_size, device))
+                print("test acc after additional finetuning: ",accs[-1])
+                #reset the finetuning
+                model.set_var_dist(prior)
+                if not(model.single_head):
+                    model.set_heads(prior_heads)
     else:
         for idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
             #coreset is a small dataset
@@ -135,7 +152,7 @@ def update_final_var_dist_and_test(task_idx, model, prior, prior_heads, curr_cor
 
 
 
-def perform_predictions(model, curr_test_dataset,batch_size,device):
+def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=100):
     data_loader = DataLoader(curr_test_dataset, batch_size=batch_size)
     labels = []
     squared_errors = []
@@ -144,7 +161,13 @@ def perform_predictions(model, curr_test_dataset,batch_size,device):
     with torch.no_grad():
         for x,y in tqdm(data_loader,desc="Testing Performance"):
             x,y = x.to(device),y.to(device)
-            probs = model(x)
+
+            #evaluate the integral over weights via monte carlo estimate
+            probs = []
+            for _ in range(num_samples):
+                probs.append(model(x))
+            probs = torch.stack(probs).mean(dim=0)
+
             if model.mode == "regression":
                 one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
                 se = F.mse_loss(probs, one_hot_labels, reduction="sum")
@@ -184,7 +207,14 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
         print("Initialize an empty coreset")
     #prior in the model is already implemented all values sampled from gaussian
     prior = None
+    #
+    #init prior as N(0,1)
+    prior = get_standard_normal_prior(model, device)
+    #get MLE estimate
+    model_init = get_mle_estimate(model, train_datasets[0], device)
     # get the number of datasets T
+    model.set_var_dist(model_init)
+    print("Acc:", perform_predictions(model, test_datasets[0],256,device))
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model

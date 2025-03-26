@@ -54,7 +54,7 @@ class DiscriminativeModel(nn.Module):
         params = torch.cat(params)
         return params
 
-    def get_fisher(self, dataset,sample_size=50000):
+    def get_fisher(self, dataset,sample_size=600):
         fisher_diag = None
         self.eval()
         batch_size = 1 #to prevent weird errors from summing before squaring

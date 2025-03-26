@@ -68,24 +68,27 @@ def main(config_path, id="0", save=True):
         model_class = EWC_model
         CL_algorithm = ewc
         lambdas = config["lambdas"]
+        single_head = config["single_head"]
         print(f"EWC parameters:\n   lambdas:{lambdas}")
         alg_args = {"lambdas": lambdas}
-        model_args = {}
+        model_args = {"single_head": single_head}
     elif algorithm_name =="SI":
         model_class = SI_model
         CL_algorithm = si
         c = config["c"]
         damping_param = config["damping_param"]
+        single_head = config["single_head"]
         print(f"SI parameters:\n    c:{c}\n    damping_param:{damping_param}")
         alg_args = { "damping_param":damping_param, "c": c}
-        model_args = {}
+        model_args = {"single_head": single_head}
     elif algorithm_name =="LP":
         model_class = LP_model
         CL_algorithm = lp
         lambd = config["lambd"]
+        single_head = config["single_head"]
         print(f"LP parameters:\n    lambda:{lambd}")
         alg_args = {"lambd":lambd}
-        model_args = {}
+        model_args = {"single_head": single_head}
 
     train_tasks = []
     test_tasks = []
@@ -117,10 +120,10 @@ def main(config_path, id="0", save=True):
         "config": config,
         "accuracies": acc_list
     }
-    os.makedirs('100_epochs', exist_ok=True)
+    os.makedirs('20_epochs', exist_ok=True)
     #save the accs
     if save:
-        with open(f'100_epochs/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'20_epochs/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4)
 
 

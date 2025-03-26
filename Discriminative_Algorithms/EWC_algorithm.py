@@ -50,7 +50,8 @@ def evaluate_on_all_tasks(task_idx, model, test_datasets, batch_size, epochs, lr
     prev_head = model.get_active_head_idx()
     for head_idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
         #excluseive 
-        model.activate_head(head_idx)
+        if not(model.single_head):
+            model.activate_head(head_idx)
         #append the accuracy
         accs.append(perform_predictions(model, test_dataset, batch_size, device))
         print(f"Got accuracy of {accs[-1]*100}%")
