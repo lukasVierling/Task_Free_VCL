@@ -1,0 +1,12 @@
+algorithm_name: "VI"
+num_tasks: 3
+epochs: 5
+lr: 0.001
+hidden_dim: 100
+batch_size: 256
+mode : "bernoulli"
+single_head : False
+current_window : 1
+baseline_window : 50
+c : 5
+num_samples: 100

@@ -1,0 +1,21 @@
+{
+    "config": {
+        "algorithm_name": "VI",
+        "num_tasks": 3,
+        "epochs": 5,
+        "lr": 0.001,
+        "hidden_dim": 100,
+        "batch_size": 256,
+        "mode": "bernoulli",
+        "single_head": false,
+        "current_window": 1,
+        "baseline_window": 50,
+        "c": 5,
+        "num_samples": 100
+    },
+    "accuracies": [
+        0.9540999531745911,
+        0.9370499849319458,
+        0.9003666639328003
+    ]
+}

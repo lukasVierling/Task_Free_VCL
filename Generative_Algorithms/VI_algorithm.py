@@ -226,7 +226,7 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
             summed_ll += results.sum()
 
         average_ll = summed_ll / len(curr_test_dataset)
-
+    model.train()
     return uncertainty_measure, average_ll
 
 def sample_generations(model, classifier, curr_test_dataset, batch_size,device):

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import math
+import copy
 
 class BayesianLayer(nn.Module):
 
@@ -75,37 +77,22 @@ class DiscriminativeModel(nn.Module):
             print("Train on single head")
             self.add_head()
     
-    def get_MI(self, x, num_samples=25, return_predictions=False, head_idx=None):
-        #x should be in batch form ( if one sample then (1,D))
-        #calc the entropy
-        batch_size = x.shape[0]
-        with torch.no_grad():
-            x = x.repeat(num_samples, 1, 1) # -> [num_samp, B, D]
-            x = x.view(num_samples*batch_size, -1) #-> [num_s * B, D]
-            y = self(x, head_idx=head_idx)
-        y = y.view(num_samples, batch_size, -1) # -> [num_samp, B, D]
-        avg_pred = y.mean(dim=0) #-> reduce over num_samp and get [B,D]
-        avg_pred_entropy = -torch.sum(avg_pred * torch.log(avg_pred + 1e-8), dim=-1)
-        entropies = -torch.sum(y * torch.log(y + 1e-8), dim=-1)
-        avg_entropy = torch.mean(entropies, dim=0)
-        MI = avg_pred_entropy - avg_entropy
-        if not return_predictions:
-            return MI
-        else:
-            return MI, avg_pred
-    
     def calc_MI(self, x):
         if self.mode != "regression":
             print("Warning, no closed from solution for softmax head!")
         pass
 
 
-    def get_heads(self):
-        heads = copy.deepcopy(self.heads)
+    def get_heads(self, detach=True):
+        heads = []
+        for head_idx in range(len(self.heads)):
+            heads.append(self.heads[head_idx].get_var_dist(detach))
         return heads
+
     
     def set_heads(self, heads):
-        self.heads = copy.deepcopy(heads)
+        for head_idx in range(len(self.heads)):
+            heads.append(self.heads[head_idx].set_var_dist(heads[head_idx]))
     
     def get_var_dist(self, detach=True):
         return self.encoder.get_var_dist(detach)
@@ -119,7 +106,7 @@ class DiscriminativeModel(nn.Module):
         add a new head to the model and set active head to this head
         '''
         # move the old head to the same device as previous head
-        device = self.heads[-1].W_mu.device if len(self.heads) > 0 else self.W_mu.device
+        device = self.heads[-1].W_mu.device if len(self.heads) > 0 else self.encoder.W_mu.device
         new_head = BayesianLayer(self.hidden_dim, self.output_dim).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
@@ -138,6 +125,25 @@ class DiscriminativeModel(nn.Module):
     def get_active_head_idx(self):
         return self.active_head
     
+    def get_MI(self, x, num_samples=25, return_predictions=False, head_idx=None):
+        #x should be in batch form ( if one sample then (1,D))
+        #calc the entropy
+        batch_size = x.shape[0]
+        with torch.no_grad():
+            x = x.repeat(num_samples, 1, 1, 1) # -> [num_samp, B, D]
+            x = x.view(num_samples*batch_size, -1) #-> [num_s * B, D]
+            y = self(x, head_idx=head_idx)
+        y = y.view(num_samples, batch_size, -1) # -> [num_samp, B, D]
+        avg_pred = y.mean(dim=0) #-> reduce over num_samp and get [B,D]
+        avg_pred_entropy = -torch.sum(avg_pred * torch.log(avg_pred + 1e-8), dim=-1)
+        entropies = -torch.sum(y * torch.log(y + 1e-8), dim=-1)
+        avg_entropy = torch.mean(entropies, dim=0)
+        MI = avg_pred_entropy - avg_entropy
+        if not return_predictions:
+            return MI
+        else:
+            return MI, avg_pred
+        
     def forward_with_routing(self, x, mode="batchwise", num_samples=25):
         if mode != "batchwise":
             print("Please use batchwise mode, other modes not impelemented")
@@ -150,8 +156,8 @@ class DiscriminativeModel(nn.Module):
             avg_MI = MI.mean(dim=0)
             MIs.append(avg_MI)
             preds.append(avg_pred)
-        MIs = torch.tensor(MIs)
-        best_head = torch.argmin(MIs)
+        MIs = torch.stack(MIs)
+        best_head =  int(torch.argmin(MIs).item())
         best_preds = preds[best_head]
 
         return best_preds, best_head

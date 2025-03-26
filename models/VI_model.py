@@ -18,6 +18,7 @@ class BayesianLayer(nn.Module):
         self.b_mu = nn.Parameter(torch.rand(output_dim) * 2 * math.sqrt(k)-math.sqrt(k))
         self.W_sigma = nn.Parameter(torch.randn(input_dim, output_dim) * 0.1 - 6)
         self.b_sigma = nn.Parameter(torch.randn(output_dim) * 0.1- 6) #TODO Going form -3 to -7 increase acc by 10%!!
+    
 
     def get_var_dist(self, detach=True):
         if detach:
@@ -39,11 +40,17 @@ class BayesianLayer(nn.Module):
         device = self.W_mu.device
         # detach them from any comp graph and trainable through nn.param
         print("Initialize the shared layer with new var_dist")
+        '''
         self.W_mu = torch.nn.Parameter(var_dist["W_mu"].detach().clone().to(device))
         self.b_mu = torch.nn.Parameter(var_dist["b_mu"].detach().clone().to(device))
         self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone().to(device))
         self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone().to(device))  
-        
+        '''
+        #to keep optimizer states
+        self.W_mu.data.copy_(var_dist["W_mu"].detach().clone().to(device))
+        self.b_mu.data.copy_(var_dist["b_mu"].detach().clone().to(device))
+        self.W_sigma.data.copy_(var_dist["W_sigma"].detach().clone().to(device))
+        self.b_sigma.data.copy_(var_dist["b_sigma"].detach().clone().to(device))  
     
     def forward(self, x):
         #get bs
@@ -80,6 +87,9 @@ class DiscriminativeModel(nn.Module):
         if self.single_head:
             print("Train on single head")
             self.add_head()
+    
+    def set_optimizer(self, optimizer):
+        self.optimizer = optimizer
 
     def get_heads(self):
         heads = copy.deepcopy(self.heads)

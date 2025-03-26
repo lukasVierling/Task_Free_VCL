@@ -2,6 +2,71 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def get_standard_normal_prior_extension(model, device):
+        input_dim = model.input_dim
+        hidden_dim = model.hidden_dim
+        output_dim = model.output_dim
+        single_head = model.single_head
+        encoder = {
+            "W_mu": nn.Parameter(torch.zeros(input_dim, hidden_dim)).to(device),
+            "b_mu": nn.Parameter(torch.zeros(hidden_dim)).to(device),
+            "W_sigma": nn.Parameter(torch.zeros(input_dim, hidden_dim)).to(device),
+            "b_sigma": nn.Parameter(torch.zeros(hidden_dim)).to(device)
+        }
+        var_dist = {}
+        var_dist["encoder"] = encoder
+
+        
+        return var_dist["encoder"]
+
+def get_mle_estimate_extension(model, dataset, device):
+    input_dim = model.input_dim
+    hidden_dim = model.hidden_dim
+    output_dim = model.output_dim
+    mle_model = nn.Sequential(nn.Linear(input_dim, hidden_dim),nn.ReLU(),nn.Linear(hidden_dim,output_dim))
+    optimizer = torch.optim.Adam(mle_model.parameters(), lr=0.001)
+    data_loader = torch.utils.data.DataLoader(dataset, shuffle=True, batch_size=256)
+    #get MLE estimate after tarining for a single epoch (should be enough on MNIST)
+    mle_model.to(device)
+    for x,y in data_loader:
+        mle_model.zero_grad()
+        x,y = x.to(device),y.to(device)
+        x = x.view(x.shape[0], -1)
+        outputs = mle_model(x)
+        loss = 0
+        if model.mode == "regression":
+            print("no regression MLE support yet")
+            one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
+            loss = F.mse_loss(outputs,one_hot_labels)
+
+        elif model.mode == "bernoulli":
+            #outputs are not softmaxed
+            loss = F.cross_entropy(outputs, y)
+        else:
+            print("Choose supported mode for MLE estimate")
+
+        loss.backward()
+        optimizer.step()
+    #finished training now save the MLE 
+    var_dist = {}
+    encoder = {
+        "W_mu":  nn.Parameter(mle_model[0].weight.data.detach().clone().t()), #transpose because nn.Linear(M,N) creates NxM matrix ! 
+        "b_mu":  nn.Parameter(mle_model[0].bias.data.detach().clone()),
+        "W_sigma": nn.Parameter(torch.full(mle_model[0].weight.data.shape, -6.0).t()),
+        "b_sigma": nn.Parameter(torch.full(mle_model[0].bias.data.shape, -6.0))
+    }
+    var_dist["encoder"] = encoder
+
+    var_dist["heads"] = [{
+        "W_mu":  nn.Parameter(mle_model[2].weight.data.detach().clone().t()),
+        "b_mu":  nn.Parameter(mle_model[2].bias.data.detach().clone()),
+        "W_sigma": nn.Parameter(torch.full(mle_model[2].weight.data.shape, -6.0).t()),
+        "b_sigma": nn.Parameter(torch.full(mle_model[2].bias.data.shape, -6.0))
+    }]
+    return var_dist
+
+
+
 def get_standard_normal_prior(model, device):
         input_dim = model.input_dim
         hidden_dim = model.hidden_dim
@@ -30,7 +95,8 @@ def get_standard_normal_prior(model, device):
                 "W_sigma": nn.Parameter(torch.zeros(hidden_dim, output_dim)).to(device),
                 "b_sigma": nn.Parameter(torch.zeros(output_dim)).to(device)
             }]
-        return var_dist
+
+            return var_dist
 
 def get_mle_estimate(model, dataset, device):
     input_dim = model.input_dim
