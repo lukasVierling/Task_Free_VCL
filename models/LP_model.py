@@ -17,6 +17,7 @@ class DiscriminativeModel(nn.Module):
         # first hidden layer -> fld layer in one parameter vector
         # Bayesian first hidden layer parameters (mean & log variance)
         self.linear = torch.nn.Linear(input_dim, hidden_dim)
+        self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
@@ -31,6 +32,11 @@ class DiscriminativeModel(nn.Module):
                 self.linear.weight.clone().detach().view(-1),
                 self.linear.bias.clone().detach().view(-1)
                 ]
+            params2 = [
+                self.linear2.weight.clone().detach().view(-1),
+                self.linear2.bias.clone().detach().view(-1)
+                ]
+            params = params + params2
 
             if self.single_head:
                 head = self.heads[-1]
@@ -43,6 +49,11 @@ class DiscriminativeModel(nn.Module):
         else:
             params = [self.linear.weight.view(-1),
                 self.linear.bias.view(-1)]
+            params2 = [
+                self.linear2.weight.view(-1),
+                self.linear2.bias.view(-1)
+                ]
+            params = params + params2
             
             if self.single_head:
                 head = self.heads[-1]
@@ -72,12 +83,15 @@ class DiscriminativeModel(nn.Module):
             output = self(x)
             probs = output.gather(1, y.view(-1, 1)).squeeze() # get p(y_t | theta, x_t)
             log_probs = torch.log(probs + 1e-8) #calc log(p(..))
-            loss = -log_probs.mean() #Sign shouldn't matter
+            loss = log_probs.mean() #Sign shouldn't matter
             #take the gradient
             loss.backward()
             # concat and flatten all the gradients
             grads = torch.cat([self.linear.weight.grad.clone().detach().view(-1),
                                  self.linear.bias.grad.clone().detach().view(-1)])
+            grads2 = torch.cat([self.linear2.weight.grad.clone().detach().view(-1),
+                                 self.linear2.bias.grad.clone().detach().view(-1)])
+            grads = torch.cat([grads,grads2])
             if self.single_head:
                 #should only be a single head there
                 head = self.heads[-1]
@@ -98,6 +112,7 @@ class DiscriminativeModel(nn.Module):
     
 
     def get_hessian(self, dataset, subset_size = 500):
+        print("Not used anymore")
         hessian_diag = None
         self.eval()
         batch_size = subset_size
@@ -184,6 +199,7 @@ class DiscriminativeModel(nn.Module):
         # fold the encoder into a layer
 
         z = F.relu(self.linear(x))
+        z = F.relu(self.linear2(z))
         
         # forward throught head
         y = self.heads[self.active_head](z)

@@ -1,12 +1,15 @@
 algorithm_name: "VI"
 num_tasks: 3
-epochs: 5
+epochs: 2
 lr: 0.001
-hidden_dim: 100
+hidden_dim: 32
 batch_size: 256
-mode : "bernoulli"
+mode : "regression"
 single_head : False
 current_window : 1
 baseline_window : 50
 c : 5
-num_samples: 100
+num_samples: 50
+var : 0.01
+routing_mode : "batchwise"
+calculation_mode: "closed_form"

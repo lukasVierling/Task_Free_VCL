@@ -9,7 +9,8 @@ import json
 import sys
 import os
 import matplotlib.pyplot as plt
-
+from collections import defaultdict
+import pandas as pd
 #sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #my imports
 from extension.algorithm import vcl
@@ -27,86 +28,96 @@ def parse_config(config_path):
 import os
 import matplotlib.pyplot as plt
 
-def plot_results(results, save_folder="extension_logs/plots"):
-    #print(results)
+def plot_results(results, save_folder="plots", window_size=100):
+    """Generate plots for head selection distribution and mutual information.
+
+    Args:
+        results (dict): Dictionary with 'heads_chosen' and 'mutual_info'.
+        save_folder (str): Directory to save the plots.
+        window_size (int): Window size for rolling mean and std calculations.
+    """
+    # Create save directory if it doesn’t exist
     os.makedirs(save_folder, exist_ok=True)
-    
-    # Convert tensors to CPU scalars/lists:
-    train_losses = [x.cpu().item() if isinstance(x, torch.Tensor) else x for x in results["train_losses"]]
-    mutual_infos = [x.cpu().item() if isinstance(x, torch.Tensor) else x for x in results["mutual_info"]]
-    means = [x.cpu().item() if isinstance(x, torch.Tensor) else x for x in results["means"]]
-    stds = [x.cpu().item() if isinstance(x, torch.Tensor) else x for x in results["stds"]]
-    
-    # Handle heads_chosen: if it's a list, assume the final element is the dictionary
-    if isinstance(results["heads_chosen"], list):
-        if len(results["heads_chosen"]) > 0 and isinstance(results["heads_chosen"][-1], dict):
-            heads_chosen_stat = results["heads_chosen"][-1]
-        else:
-            heads_chosen_stat = {}
+
+    # Helper function to convert tensors to floats
+    def to_float(x):
+        return x.cpu().item() if isinstance(x, torch.Tensor) else float(x)
+
+    # --- Plot 1: Head Selection Distribution per Task ---
+    heads_chosen = results.get("heads_chosen", {})
+    for task_id, heads_dict in heads_chosen.items():
+        # Ensure heads_dict is a dictionary
+        if not isinstance(heads_dict, (dict, defaultdict)):
+            print(f"Warning: Data for task {task_id} is not a dictionary. Skipping.")
+            continue
+        
+        # Extract head IDs and counts
+        head_ids = sorted(heads_dict.keys())  # Sort for consistent ordering
+        counts = [heads_dict[head] for head in head_ids]
+
+        # Create bar chart
+        plt.figure(figsize=(8, 6))
+        plt.bar(head_ids, counts, color='skyblue')
+        plt.xlabel('Head Index')
+        plt.ylabel('Number of Selections')
+        plt.title(f'Head Selection Distribution for Task {task_id}')
+        plt.xticks(head_ids)  # Ensure all head IDs are shown on x-axis
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_folder, f'heads_chosen_task_{task_id}.png'))
+        plt.close()
+
+    # --- Plot 2: Mutual Information with Rolling Mean and STD Bands ---
+    mi_list = [to_float(x) for x in results.get("mutual_info", [])]
+    if not mi_list:
+        print("No mutual information data provided.")
+        return
+
+    if len(mi_list) < window_size:
+        print(f"MI list length ({len(mi_list)}) is shorter than window size ({window_size}). Plotting raw MI only.")
+        plt.figure(figsize=(10, 6))
+        plt.plot(mi_list, label="MI", alpha=0.5, color='gray')
+        plt.xlabel("Batch Index")
+        plt.ylabel("Mutual Information")
+        plt.title("Mutual Information Over Time")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_folder, "mutual_information.png"))
+        plt.close()
     else:
-        heads_chosen_stat = results["heads_chosen"]
-    
-    # Convert keys to int if necessary
-    heads = [int(k) if isinstance(k, torch.Tensor) else k for k in heads_chosen_stat.keys()]
-    counts = list(heads_chosen_stat.values())
-    
-    # Plot training loss
-    plt.figure(figsize=(10, 6))
-    plt.plot(train_losses, label="Train Loss")
-    plt.xlabel("Batch Index")
-    plt.ylabel("Loss")
-    plt.title("Training Loss Over Batches")
-    plt.legend()
-    plt.savefig(os.path.join(save_folder, "train_loss.png"))
-    plt.close()
-    
-    # Plot mutual information
-    plt.figure(figsize=(10, 6))
-    plt.plot(mutual_infos, label="Mutual Information")
-    plt.xlabel("Batch Index")
-    plt.ylabel("MI")
-    plt.title("Mutual Information Over Batches")
-    plt.legend()
-    plt.savefig(os.path.join(save_folder, "mutual_information.png"))
-    plt.close()
-    
-    # Plot baseline mean and std
-    plt.figure(figsize=(10, 6))
-    plt.plot(means, label="Baseline Mean")
-    plt.plot(stds, label="Baseline STD")
-    plt.xlabel("Batch Index")
-    plt.ylabel("Value")
-    plt.title("Baseline Mean and STD Over Batches")
-    plt.legend()
-    plt.savefig(os.path.join(save_folder, "baseline_mean_std.png"))
-    plt.close()
-    
-    # Plot head selection statistics as a bar chart
-    plt.figure(figsize=(8, 6))
-    plt.bar(heads, counts)
-    plt.xlabel("Head Index")
-    plt.ylabel("Selection Count")
-    plt.title("Head Selection Statistics")
-    plt.savefig(os.path.join(save_folder, "head_selection.png"))
-    plt.close()
-    
-    # Plot final test accuracy as a bar chart (assumes results["acc"] is a scalar)
-    final_acc = results["acc"]
-    if isinstance(final_acc, list):
-        final_acc = np.mean(final_acc)
-    elif isinstance(final_acc, torch.Tensor):
-        final_acc = final_acc.cpu().item()
+        # Convert MI list to pandas Series for rolling calculations
+        mi_series = pd.Series(mi_list)
+        rolling_mean = mi_series.rolling(window=window_size).mean()
+        rolling_std = mi_series.rolling(window=window_size).std()
 
-    if isinstance(final_acc, torch.Tensor):
-        final_acc = final_acc.cpu().item()
-    plt.figure(figsize=(6, 6))
-    plt.bar(["Final Accuracy"], [final_acc])
-    plt.ylabel("Accuracy")
-    plt.title("Final Test Accuracy")
-    plt.savefig(os.path.join(save_folder, "final_accuracy.png"))
-    plt.close()
-
-
+        # Create the plot
+        plt.figure(figsize=(10, 6))
+        # Plot raw MI
+        plt.plot(mi_list, label="MI", alpha=0.5, color='gray')
+        # Plot rolling mean
+        plt.plot(rolling_mean, label="Rolling Mean", linewidth=2, color='black')
+        # Shade ±5 std
+        plt.fill_between(range(len(rolling_mean)), 
+                         rolling_mean - 5*rolling_std, 
+                         rolling_mean + 5*rolling_std, 
+                         color='blue', alpha=0.1, label="±5 STD")
+        # Shade ±3 std
+        plt.fill_between(range(len(rolling_mean)), 
+                         rolling_mean - 3*rolling_std, 
+                         rolling_mean + 3*rolling_std, 
+                         color='blue', alpha=0.2, label="±3 STD")
+        # Shade ±1 std
+        plt.fill_between(range(len(rolling_mean)), 
+                         rolling_mean - 1*rolling_std, 
+                         rolling_mean + 1*rolling_std, 
+                         color='blue', alpha=0.3, label="±1 STD")
+        
+        plt.xlabel("Batch Index")
+        plt.ylabel("Mutual Information")
+        plt.title("Mutual Information with Rolling Mean and STD Bands")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_folder, "mutual_information_with_bands.png"))
+        plt.close()
 
 def main(config_path, id="0", save=True):
 
@@ -141,9 +152,14 @@ def main(config_path, id="0", save=True):
         num_samples = config["num_samples"]
         mode = config["mode"]
         single_head = config["single_head"]
-        print(f"VI parameters for coreset:\n   baseline_window:{baseline_window} \n   current_window:{current_window}\n    mode: {mode} \n    single head:{single_head}\n    num samples: {num_samples}")
-        alg_args = {"baseline_window_size":baseline_window, "current_window_size": current_window, "c": c, "num_samples": num_samples}
+        var = config["var"]
+        claculation_mode = config["calculation_mode"]
+        routing_mode = config["routing_mode"]
+        print(f"VI parameters for coreset:\n   baseline_window:{baseline_window} \n   current_window:{current_window}\n    mode: {mode} \n    single head:{single_head}\n    num samples: {num_samples} \n    var:{var}\n    calc mode: {claculation_mode}\n    routing_mode : {routing_mode}")
+        alg_args = {"baseline_window_size":baseline_window, "current_window_size": current_window, "c": c, "num_samples": num_samples, "calculation_mode": claculation_mode, "routing_mode": routing_mode, "var":var}
         model_args = {"mode": mode, "single_head": single_head}
+        #if mode == "regression":
+         #   output_dim = 1
 
     train_tasks = []
     test_tasks = []
@@ -173,7 +189,8 @@ def main(config_path, id="0", save=True):
     print("Final accs:", accs)
     result_dict = {
         "config": config,
-        "accuracies": accs
+        "accuracies": accs,
+        "metrics": metrics
     }
     os.makedirs('extension_logs', exist_ok=True)
     #save the accs

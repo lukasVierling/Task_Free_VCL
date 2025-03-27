@@ -1,9 +1,9 @@
 algorithm_name: "SI"
 num_tasks: 10
-epochs: 20
+epochs: 100
 lr: 0.001
 hidden_dim: 100
-c : 1
+c : 0.05
 damping_param : 0.001
 batch_size: 256
 single_head : True

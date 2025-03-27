@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import copy
 
 class DiscriminativeModel(nn.Module):
 
@@ -13,6 +14,7 @@ class DiscriminativeModel(nn.Module):
         # first hidden layer -> fld layer in one parameter vector
         # Bayesian first hidden layer parameters (mean & log variance)
         self.linear = torch.nn.Linear(input_dim, hidden_dim)
+        self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         # second hidden layer, bayesian layer
         self.heads = nn.ModuleList()
         self.active_head = 0
@@ -58,6 +60,11 @@ class DiscriminativeModel(nn.Module):
                 self.linear.weight.clone().detach().view(-1),
                 self.linear.bias.clone().detach().view(-1)
                 ]
+            params2 = [
+                self.linear2.weight.clone().detach().view(-1),
+                self.linear2.bias.clone().detach().view(-1)
+                ]
+            params = params + params2
 
             if self.single_head:
                 head = self.heads[-1]
@@ -70,6 +77,11 @@ class DiscriminativeModel(nn.Module):
         else:
             params = [self.linear.weight.view(-1),
                 self.linear.bias.view(-1)]
+            params2 = [
+                self.linear2.weight.view(-1),
+                self.linear2.bias.view(-1)
+                ]
+            params = params + params2
             
             if self.single_head:
                 head = self.heads[-1]
@@ -86,6 +98,9 @@ class DiscriminativeModel(nn.Module):
     def get_stacked_gradients(self):
         grads = [self.linear.weight.grad.view(-1).detach().clone(),
                 self.linear.bias.grad.view(-1).detach().clone()]
+        grads2 = [self.linear2.weight.grad.view(-1).detach().clone(),
+                self.linear2.bias.grad.view(-1).detach().clone()]
+        grads = grads + grads2
         if self.single_head:
             head = self.heads[-1]
             head_grads = [head.weight.grad.view(-1).detach().clone(),
@@ -100,14 +115,12 @@ class DiscriminativeModel(nn.Module):
         # fold the encoder into a layer
 
         z = F.relu(self.linear(x))
+        z = F.relu(self.linear2(z))
         
         # forward throught head
         y = self.heads[self.active_head](z)
         probs = F.softmax(y, dim=-1)
         return probs
-
-
-    
 
 class GenerativeModel(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, latent_dim):

@@ -96,7 +96,7 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
     model.to(device)
     ret = []
     #init with covariance of gaussian prior
-    hessian_diag = torch.zeros_like(model.get_stacked_params(detach=True)).to(device) #TODO what is the properi nitialization?
+    hessian_diag = torch.ones_like(model.get_stacked_params(detach=True)).to(device) #TODO what is the properi nitialization?
     prev_theta = None #start with MLE 
     # get the number of datasets T
     T = len(train_datasets)

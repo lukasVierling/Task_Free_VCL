@@ -63,7 +63,7 @@ def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train
 
 def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
     
-    optimizer = model.optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True) #TODO batch_size hyperparameter
     if not(prior):
@@ -217,8 +217,8 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
     print("Acc:", perform_predictions(model, test_datasets[0],256,device))
 
     #optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    model.set_optimizer(optimizer)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    #model.set_optimizer(optimizer)
 
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):

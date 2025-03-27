@@ -16,8 +16,13 @@ class BayesianLayer(nn.Module):
         #self.W_mu = nn.Parameter(torch.empty(input_dim, hidden_dim))
         #nn.init.kaiming_uniform_(self.W_mu, a=math.sqrt(5))
         self.b_mu = nn.Parameter(torch.rand(output_dim) * 2 * math.sqrt(k)-math.sqrt(k))
-        self.W_sigma = nn.Parameter(torch.randn(input_dim, output_dim) * 0.1 - 6)
+        self.W_sigma = nn.Parameter(torch.randn(input_dim, output_dim) * 0.1 - 6) #note this is actually the log variance
         self.b_sigma = nn.Parameter(torch.randn(output_dim) * 0.1- 6) #TODO Going form -3 to -7 increase acc by 10%!!
+
+       # nn.init.xavier_normal_(self.W_mu)
+        #self.W_sigma.data.fill_(-5.0)
+        #nn.init.zeros_(self.b_mu)
+        #self.b_sigma.data.fill_(-5.0)
     
     def get_var_dist(self, detach=True):
         if detach:
@@ -76,12 +81,7 @@ class DiscriminativeModel(nn.Module):
         if self.single_head:
             print("Train on single head")
             self.add_head()
-    
-    def calc_MI(self, x):
-        if self.mode != "regression":
-            print("Warning, no closed from solution for softmax head!")
-        pass
-
+        print(f"Params:\n   input_dim: {input_dim}\n    hidden_dim:{hidden_dim}\n   output_dim:{output_dim}\n    mode:{mode}\n    single_head:{single_head}")
 
     def get_heads(self, detach=True):
         heads = []
@@ -125,40 +125,99 @@ class DiscriminativeModel(nn.Module):
     def get_active_head_idx(self):
         return self.active_head
     
+    def calc_MI(self, x, var=0.01, head_idx=None, eps=1e-8):
+        """Compute MI using closed-form solution for regression."""
+        # Get fixed representation from the encoder
+        #z = F.relu(self.encoder(x, sample=False))  # shape: (batch_size, hidden_dim)
+        x = x.view(x.shape[0], -1)
+        z = F.relu(x @ self.encoder.W_mu + self.encoder.b_mu)
+        if head_idx is None:
+            head_idx = self.get_active_head_idx()
+        head = self.heads[head_idx]
+        weight_var = torch.exp(head.W_sigma)  # shape: (output_dim, hidden_dim)
+        # Compute the variance term using matrix multiplication:
+        var_term = torch.matmul(z**2, weight_var)  # shape: (batch_size, output_dim)
+        mi = 0.5 * torch.log(1 + (var_term + eps) / var)  # shape: (batch_size, output_dim)
+        mi=mi.mean(dim=1)
+        #print("mi shape:",mi.shape)
+        return mi
+
+    def calc_MI_old(self, x, var, head_idx=None):
+        if self.mode != "regression":
+            print("No closed form MI solution for non regression model")
+
+        if head_idx is None:
+            head_idx = self.get_active_head_idx()
+
+        with torch.no_grad():
+            #get mean embedding
+            batch_size = x.shape[0]
+            x = x.view(batch_size, -1) # BxD
+            z = F.relu(x @ self.encoder.W_mu + self.encoder.b_mu).detach() #-> phi(x) BxL (L= latent dim)
+            #print("z shape:",z.shape)
+            #z_squared = z ** 2
+            #print(" z sq shape: ", z_squared.shape)
+            #calc the MI with closed form solution
+            Sigma = torch.exp(self.heads[head_idx].W_sigma).squeeze() #exp(log(var)) = var maybe check if actually var or std
+            #print("Sigma shape:", Sigma.shape)
+            # Sigma in L x 1
+            var_term = torch.sum(z**2 * Sigma, dim=1) # BxL ** 2 x L x 1 -> B x 1
+            # apply formula 0.5 * log(1 + phi(x)^T Sigma phi(x) / sigma^2)
+            MI = 0.5 * torch.log(1+ var_term / var)
+
+        return MI       
+
+    
     def get_MI(self, x, num_samples=25, return_predictions=False, head_idx=None):
         #x should be in batch form ( if one sample then (1,D))
         #calc the entropy
         batch_size = x.shape[0]
         with torch.no_grad():
-            x = x.repeat(num_samples, 1, 1, 1) # -> [num_samp, B, D]
-            x = x.view(num_samples*batch_size, -1) #-> [num_s * B, D]
-            y = self(x, head_idx=head_idx)
-        y = y.view(num_samples, batch_size, -1) # -> [num_samp, B, D]
-        avg_pred = y.mean(dim=0) #-> reduce over num_samp and get [B,D]
-        avg_pred_entropy = -torch.sum(avg_pred * torch.log(avg_pred + 1e-8), dim=-1)
-        entropies = -torch.sum(y * torch.log(y + 1e-8), dim=-1)
-        avg_entropy = torch.mean(entropies, dim=0)
-        MI = avg_pred_entropy - avg_entropy
+            ys = [self(x.view(batch_size, -1), head_idx=head_idx) for _ in range(num_samples)]
+            ys = torch.stack(ys, dim=0)
+            y = ys.view(num_samples, batch_size, -1) # -> [num_samp, B, D]
+            avg_pred = y.mean(dim=0) #-> reduce over num_samp and get [B,D]
+            avg_pred_entropy = -torch.sum(avg_pred * torch.log(avg_pred + 1e-8), dim=-1)
+            entropies = -torch.sum(y * torch.log(y + 1e-8), dim=-1)
+            avg_entropy = torch.mean(entropies, dim=0)
+            MI = avg_pred_entropy - avg_entropy
         if not return_predictions:
             return MI
         else:
             return MI, avg_pred
         
-    def forward_with_routing(self, x, mode="batchwise", num_samples=25):
-        if mode != "batchwise":
+    def forward_with_routing(self, x, routing_mode="batchwise", calculation_mode="sampling", num_samples=25, var=0.01):
+        if routing_mode != "batchwise":
             print("Please use batchwise mode, other modes not impelemented")
+        if routing_mode == "batchwise":
+            if calculation_mode == "sampling":
+                MIs = []
+                preds = []
+                best_head = None
+                for head_idx in range(len(self.heads)):
+                    MI, avg_pred = self.get_MI(x, num_samples=num_samples, return_predictions=True, head_idx=head_idx)
+                    avg_MI = MI.mean(dim=0)
+                    MIs.append(avg_MI)
+                    preds.append(avg_pred)
+                MIs = torch.stack(MIs)
+                best_head =  int(torch.argmin(MIs).item())
+                best_preds = preds[best_head]
 
-        MIs = []
-        preds = []
-        best_head = None
-        for head_idx in range(len(self.heads)):
-            MI, avg_pred = self.get_MI(x, num_samples=num_samples, return_predictions=True, head_idx=head_idx)
-            avg_MI = MI.mean(dim=0)
-            MIs.append(avg_MI)
-            preds.append(avg_pred)
-        MIs = torch.stack(MIs)
-        best_head =  int(torch.argmin(MIs).item())
-        best_preds = preds[best_head]
+            if calculation_mode == "closed_form":
+                MIs = []
+                preds = []
+                best_head = None
+                print("heads", len(self.heads))
+                for head_idx in range(len(self.heads)):
+                    MI = self.calc_MI(x, var=var, head_idx=head_idx)
+                    avg_MI = MI.mean(dim=0)
+                    MIs.append(avg_MI)
+                MIs = torch.stack(MIs)
+                print("MIs shape:",MIs.shape)
+                best_head =  int(torch.argmin(MIs).item())
+                batch_size = x.shape[0]
+                preds = [self(x.view(batch_size, -1), head_idx=best_head) for _ in range(num_samples)]
+                best_preds = torch.stack(preds).mean(dim=0)
 
         return best_preds, best_head
 
