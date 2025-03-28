@@ -15,7 +15,7 @@ def laplace_reg(model,fisher_diags, phis):
     for idx,phi in enumerate(phis.values()):
         delta = theta-phi
         fisher_diag = fisher_diags[idx]
-        loss += 0.5 * delta.T @ (delta * fisher_diag)
+        loss += 0.5 * torch.sum(delta ** 2 * fisher_diag, dim=0)
     # bec. we use diagonal matrices we can just do elementwise multiplication at the end
     #TODO consider a mean
     #print(f"Laplace regularization loss of: {loss}")

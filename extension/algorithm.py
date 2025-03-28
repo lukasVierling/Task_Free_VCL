@@ -45,28 +45,28 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
         for x,y in tqdm(data_loader,desc="Testing Performance"):
             x,y = x.to(device),y.to(device)
 
+            x = x.view(x.shape[0],-1)
             #evaluate the integral over weights via monte carlo estimate
-            probs = []
+            #preds, best_head = torch.ones((x.shape[0],model.output_dim)), 0
             preds, best_head = model.forward_with_routing(x, routing_mode=routing_mode, calculation_mode=calculation_mode, var=var, num_samples=num_samples)
             #update head statistics
             heads_chosen[best_head] += x.shape[0]
-            probs.append(preds)
-            probs = torch.stack(probs).mean(dim=0)
 
             if model.mode == "regression":
-                one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
+                one_hot_labels = F.one_hot(y, num_classes=model.output_dim).to(device).float()
                # one_hot_labels = y.float()
                 #print(one_hot_labels)
                 #print(probs)
-                se = F.mse_loss(probs, one_hot_labels, reduction="sum")
+                se = F.mse_loss(preds, one_hot_labels, reduction="sum")
                 squared_errors.append(se.item())
 
-                pred_labels = torch.argmax(probs, dim=1)
-                true_labels = torch.argmax(one_hot_labels, dim=1)
-                accs.append((pred_labels == true_labels).float().mean().item())
+                pred_labels = torch.argmax(preds, dim=1)
+                print("predictions:",pred_labels.shape)
+                print(" correct labels: ", y.shape)
+                accs.append((pred_labels == y).float().mean().item())
 
             else:
-                pred = torch.argmax(probs, dim=-1)
+                pred = torch.argmax(preds, dim=-1)
                 correct += torch.sum(pred == y)
                 #print(pred.shape)
                 labels.extend(pred.tolist())
@@ -81,7 +81,7 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
         metrics = correct/len(labels)
     return metrics, heads_chosen
 
-def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cpu", baseline_window_size=50, current_window_size=1, c=5, num_samples=25, var=0.01, calculation_mode="sampling", routing_mode="batchwise"):
+def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cpu", baseline_window_size=50, current_window_size=1, c=5, num_samples=25, var=0.01, calculation_mode="sampling", routing_mode="batchwise",automatic_detection=False):
     '''
     Input:
     - prior : prior distribution
@@ -100,11 +100,14 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     #get MLE estimate
     #model_init = get_mle_estimate_extension(model, train_datasets[0], device)
     # get the number of datasets T
-    model.add_head()
+    if automatic_detection:
+        #init the model with a head if autoamtic detection
+        model.add_head()
+        optimizer = optim.Adam(model.parameters(), lr=lr)
     #model.set_var_dist(model_init["encoder"])TODO later remove
     #model.set_heads(model_init["heads"])
-    print("Acc:", perform_predictions(model, test_datasets[0],256,device))
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    #print("Acc:", perform_predictions(model, test_datasets[0],256,device))
+
 
     #Mi setup
     baseline_mi = collections.deque(maxlen=baseline_window_size)
@@ -122,6 +125,10 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     for i in tqdm(range(T), desc="Training on tasks..."):
         #add task specific head to the model
         # get the current dataset D_i
+        if not(automatic_detection):
+            model.add_head()
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+
         curr_dataset = train_datasets[i]
 
         print("permutation of current dataset is :", curr_dataset.get_permutation()[0])
@@ -134,6 +141,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
             pbar = tqdm(enumerate(data_loader), desc=f"Training in Epoch: {epoch}")
             for batch_idx,(x,y) in pbar: 
                 x,y = x.to(device),y.to(device)
+                x = x.view(x.shape[0],-1)
                 optimizer.zero_grad()
                 model.zero_grad()
                 #forward through the model to get likelihood
@@ -150,16 +158,20 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
                     log_probs = torch.log(probs + 1e-8) #for numeric stability
                     lhs = log_probs.mean()
                 # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
-                if prior is not None:
-                    #rhs = kl_div_gaussian_layer(model.get_var_dist(detach=False), prior)
-                    #rhs = rhs/len(curr_dataset)
-                    rhs = 0
-                else:
-                    rhs = 0
+                rhs = 0
+                if model.mode == "regression":
+                    rhs = model.kl_divergence()
+                    rhs = rhs/len(curr_dataset)
+                elif model.mode=="bernoulli" and prior is not None:
+                    kl = kl_div_gaussian_layer(model.get_var_dist(detach=False), prior)
+
+                #rhs = 0
                 #print(lhs)
                 #print(rhs)
                 loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo
+
                 loss.backward()
+                optimizer.step()
 
                 #Calc the uncertainty of the model
                 model.eval()
@@ -185,14 +197,14 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
 
                         if current_mean > baseline_mean + c * baseline_std:
                             print(f"Found a task switch at batch idx: {batch_idx} in epoch: {epoch}")
-                            #model.add_head()
-                            #optimizer = optim.Adam(model.parameters(), lr=lr)
+                            if automatic_detection:
+                                model.add_head()
+                                optimizer = optim.Adam(model.parameters(), lr=lr)
                             baseline_mi.clear()
                             current_mi.clear()
                 if current_mi:
                     # from current_mi -> baseline_mi if current_mi is full
                     baseline_mi.append(current_mi[0])
-                optimizer.step()
                 #log metrics
                 train_losses.append(loss.cpu().item())
                 mutual_infos.append(mean_MI.cpu().item())
@@ -217,8 +229,11 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
         # Perform prediction at test input x*
         #preds = perform_predictions(model, curr_test_dataset,device)
         #collect intermediate results
-       
-        print(f"Average acc of {acc.item()} after training on task {i}")
+        if model.mode == "regression":
+            print(f"Average RMSE of {acc.item()} after training on task {i}")
+        
+        if model.mode == "bernoulli":
+            print(f"Average RMSE of {acc.item()} after training on task {i}")
         accs.append(acc.item())
         #heads_chosen_list.append(heads_chosen)
         # init the model with the previous prior so we are not influenced by the coreset training
@@ -230,7 +245,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     ret["means"] = means
     ret["stds"] = stds
     ret["heads_chosen"] = tasks_to_heads_chosen
-    print(ret)
+    #print(ret)
     return ret
 
 

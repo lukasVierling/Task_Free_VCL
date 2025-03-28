@@ -12,7 +12,7 @@ def laplace_reg(model, hessian_diag, phi):
     delta = theta - phi
     #diff to EWC: only difference between previous task and current 
     # other diff: we don't have lambda hyperparameters
-    loss = 0.5 * delta.T @ (delta * hessian_diag)
+    loss = 0.5 * torch.sum(delta ** 2 * hessian_diag,dim=0)
 
     return loss
 
@@ -97,7 +97,7 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
     ret = []
     #init with covariance of gaussian prior
     hessian_diag = torch.ones_like(model.get_stacked_params(detach=True)).to(device) #TODO what is the properi nitialization?
-    prev_theta = None #start with MLE 
+    prev_theta = model.get_stacked_params(detach=True).to(device) #start with MLE #TODO maybe remove if perfromance is worse
     # get the number of datasets T
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
@@ -113,13 +113,10 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
         #get FIM of current model and the parameters for next loss
         hessian_diag += model.get_fisher(curr_dataset).to(device) # directly apply the scaling
         print("Use Fisher approximation instead of real Hessian")#TODO adjust when chagned
-        if not(use_regularization):
-            prev_theta = None
-            print("Not using regularization")
-        else:
-            prev_theta = model.get_stacked_params(detach=True).to(device) #just for computing next loss no gradients on those
-            print(f"Saved new theta of size: {prev_theta.shape}")
-        
+
+        prev_theta = model.get_stacked_params(detach=True).to(device) #just for computing next loss no gradients on those
+        print(f"Saved new theta of size: {prev_theta.shape}")
+    
         print(f"Saved new hessian daigonal of size: {hessian_diag.shape}")
         # evaluate the performance on all tasks
         acc = evaluate_on_all_tasks(i, model, test_datasets, batch_size, epochs, lr, device)

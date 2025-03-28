@@ -24,6 +24,8 @@ from datasets.permutedMNIST import PermutedMNIST
 import numpy as np
 import os
 
+import random
+
 def parse_config(config_path):
     with open(config_path) as f:
         try:
@@ -36,15 +38,15 @@ def parse_config(config_path):
 def main(config_path, id="0", save=True):
 
     #make stuff deterministic
-    import random
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
+    seed = 1
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(0)
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    os.environ['PYTHONHASHSEED'] = '0'
+    os.environ['PYTHONHASHSEED'] = f'{seed}'
 
     print(f"Save run under id:{id} and save run is: {save}")
 
@@ -132,12 +134,13 @@ def main(config_path, id="0", save=True):
     acc_list = [ acc.item() for acc in accs]
     result_dict = {
         "config": config,
-        "accuracies": acc_list
+        "accuracies": acc_list,
+        "seed": seed
     }
-    os.makedirs('100_epochs_2l_2', exist_ok=True)
+    os.makedirs('100_epochs_2l_3', exist_ok=True)
     #save the accs
     if save:
-        with open(f'100_epochs_2l_2/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'100_epochs_2l_3/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4)
 
 

@@ -14,7 +14,8 @@ import pandas as pd
 #sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #my imports
 from extension.algorithm import vcl
-from extension.model import DiscriminativeModel as VI_model
+from extension.softmax_model import DiscriminativeModel as VI_model
+from extension.regression_model import BayesianNN as new_model
 from datasets.permutedMNIST import PermutedMNIST
 
 def parse_config(config_path):
@@ -120,6 +121,16 @@ def plot_results(results, save_folder="plots", window_size=100):
         plt.close()
 
 def main(config_path, id="0", save=True):
+    #make stuff deterministic
+    import random
+    random.seed(1)
+    np.random.seed(1)
+    torch.manual_seed(1)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(1)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = '1'
 
     print(f"Save run under id:{id} and save run is: {save}")
 
@@ -174,8 +185,8 @@ def main(config_path, id="0", save=True):
     #check for device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Training no device:", device)
-
-    model = model_class(input_dim, output_dim, hidden_dim, **model_args)
+    model_class = new_model
+    model = model_class(input_dim=input_dim,hidden_dim=hidden_dim, output_dim=output_dim, **model_args)
 
     print(f"Generated model with input_dim: {input_dim} and output_dim: {output_dim} \n Model: {model}")
 

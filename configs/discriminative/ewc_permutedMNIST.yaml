@@ -3,6 +3,6 @@ num_tasks: 10
 epochs: 100
 lr: 0.001
 hidden_dim: 100
-lambdas : [1000,1000,1000,1000,1000,1000,1000,1000,1000,1000] #try values like 100
+lambdas : [100,100,100,100,100,100,100,100,100,100] #try values like 100
 batch_size: 256
 single_head : True

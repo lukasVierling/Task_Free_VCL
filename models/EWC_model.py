@@ -149,6 +149,7 @@ class DiscriminativeModel(nn.Module):
         # fold the encoder into a layer
 
         z = F.relu(self.linear(x))
+        
         z = F.relu(self.linear2(z))
         
         # forward throught head
