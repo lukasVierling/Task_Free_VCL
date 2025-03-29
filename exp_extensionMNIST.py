@@ -14,8 +14,10 @@ import pandas as pd
 #sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #my imports
 from extension.algorithm import vcl
-from extension.softmax_model import DiscriminativeModel as VI_model
-from extension.regression_model import BayesianNN as new_model
+from extension.expert_gate_algorithm import vcl as gated_vcl
+from extension.regression_model import BayesianNN as regression_model
+from extension.gating_model import DiscriminativeModel as gated_model
+from extension.softmax_model import DiscriminativeModel as bernoulli_model
 from datasets.permutedMNIST import PermutedMNIST
 
 def parse_config(config_path):
@@ -154,7 +156,6 @@ def main(config_path, id="0", save=True):
     #algorithm
     algorithm_name = config["algorithm_name"]
     if algorithm_name == "VI":
-        model_class = VI_model
         CL_algorithm = vcl
         #coreset
         c = config["c"]
@@ -166,11 +167,29 @@ def main(config_path, id="0", save=True):
         var = config["var"]
         claculation_mode = config["calculation_mode"]
         routing_mode = config["routing_mode"]
+        automatic_detection = config["automatic_detection"]
         print(f"VI parameters for coreset:\n   baseline_window:{baseline_window} \n   current_window:{current_window}\n    mode: {mode} \n    single head:{single_head}\n    num samples: {num_samples} \n    var:{var}\n    calc mode: {claculation_mode}\n    routing_mode : {routing_mode}")
-        alg_args = {"baseline_window_size":baseline_window, "current_window_size": current_window, "c": c, "num_samples": num_samples, "calculation_mode": claculation_mode, "routing_mode": routing_mode, "var":var}
+        alg_args = {"baseline_window_size":baseline_window, "current_window_size": current_window, "c": c, "num_samples": num_samples, "calculation_mode": claculation_mode, "routing_mode": routing_mode, "var":var, "automatic_detection":automatic_detection}
         model_args = {"mode": mode, "single_head": single_head}
+        if mode == "regression":
+            model_class = regression_model
+        elif mode == "bernoulli":
+            model_class = bernoulli_model
         #if mode == "regression":
          #   output_dim = 1
+    if algorithm_name=="gated_VI":
+        CL_algorithm = gated_vcl
+        model_class = gated_model
+        #coreset
+        routing_mode = config["routing_mode"]
+        autoencoder_hidden_dim = config["autoencoder_hidden_dim"]
+        print(f"VI parameters for coreset:\n  routing_mode : {routing_mode}\n    autoencoder dim: {autoencoder_hidden_dim}")
+        alg_args = {"routing_mode": routing_mode}
+        model_args = {"autoencoder_hidden_dim": autoencoder_hidden_dim}
+        
+        #if mode == "regression":
+         #   output_dim = 1
+
 
     train_tasks = []
     test_tasks = []
@@ -185,7 +204,6 @@ def main(config_path, id="0", save=True):
     #check for device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Training no device:", device)
-    model_class = new_model
     model = model_class(input_dim=input_dim,hidden_dim=hidden_dim, output_dim=output_dim, **model_args)
 
     print(f"Generated model with input_dim: {input_dim} and output_dim: {output_dim} \n Model: {model}")
@@ -207,7 +225,7 @@ def main(config_path, id="0", save=True):
     #save the accs
     if save:
         with open(f'extension_logs/{algorithm_name}_{id}.json', 'w') as f:
-            json.dump(result_dict, f, indent=4)
+            json.dump(result_dict, f, indent=4, default=lambda o: o.tolist() if isinstance(o, torch.Tensor) else o)
 
 
     plot_results(metrics)

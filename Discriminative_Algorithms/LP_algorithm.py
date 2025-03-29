@@ -29,9 +29,7 @@ def train_one_task(model, hessian_diag, phi, lambd, curr_dataset, train_datasets
             #forward through the model to get likelihood
             output = model(x) #-> returns [B,C]
             #calc the likelihood
-            probs = output.gather(1, y.view(-1, 1)).squeeze() # index output to get [B]
-            log_probs = torch.log(probs + 1e-8) #for numeric stability
-            lhs = log_probs.mean()
+            lhs = F.cross_entropy(output, y)
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if phi is not None:
                 rhs = lambd * laplace_reg(model, hessian_diag, phi)
@@ -42,7 +40,7 @@ def train_one_task(model, hessian_diag, phi, lambd, curr_dataset, train_datasets
                 rhs = 0
             #print("Loss lhs:", lhs)
             #print("Loss rhs:", rhs)
-            loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct? #TODO consider normalizing rhs
+            loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct? #TODO consider normalizing rhs
             loss.backward()
             optimizer.step()
 
@@ -106,7 +104,6 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
             model.add_head()
         # get the current dataset D_i and train set
         curr_dataset = train_datasets[i]
-        curr_test_dataset = test_datasets[i]
         # update the coreset with D_i
         # Update the variational distribution for non-coreset data points
         train_one_task(model, hessian_diag, prev_theta, lambd, curr_dataset, train_datasets ,batch_size, epochs, lr, device)

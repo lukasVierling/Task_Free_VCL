@@ -1,0 +1,11 @@
+algorithm_name: "LP"
+num_tasks: 10
+epochs: 20
+lr: 0.001
+hidden_dim: 100
+lambd: 0.1
+batch_size: 200
+single_head: True
+seed: 102
+id: 2
+save_folder: "10_runs_LP_final"

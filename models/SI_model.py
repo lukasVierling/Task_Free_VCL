@@ -119,8 +119,9 @@ class DiscriminativeModel(nn.Module):
         
         # forward throught head
         y = self.heads[self.active_head](z)
-        probs = F.softmax(y, dim=-1)
-        return probs
+        return y
+
+
 
 class GenerativeModel(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, latent_dim):
@@ -132,7 +133,12 @@ class GenerativeModel(nn.Module):
         k = 1 / hidden_dim
         # first hidden layer -> fld layer in one parameter vector
         # Bayesian first hidden layer parameters (mean & log variance)
-        self.linear = torch.nn.Linear(hidden_dim,output_dim)
+        #1hidden layer shared component
+        self.shared = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
         #Individual Encoder for every task
         self.encoders = nn.ModuleList()
         self.active_encoder = 0
@@ -140,21 +146,61 @@ class GenerativeModel(nn.Module):
         #Inidividual Heads
         self.heads = nn.ModuleList()
         self.active_head = 0
-        
+
+    def get_stacked_grads(self):
+        grads = [params.grad.clone().detach().view(-1) for params in self.shared.parameters()]
+        return torch.stack(grads)
+    
     def get_stacked_params(self, detach=True):
         if detach:
-            params = [self.linear.weight.clone().detach().view(-1),
-                self.linear.bias.clone().detach().view(-1)]
+            params = [params.clone().detach().view(-1) for params in self.shared.parameters()]
         else:
-            params = [self.linear.weight.view(-1),
-                self.linear.bias.view(-1)]
+            params = [params.view(-1) for params in self.shared.parameters()]
         params = torch.cat(params)
         return params
     
-    def get_stacked_gradients(self):
-        grads = [self.linear.weight.grad.view(-1).detach().clone(),
-                self.linear.bias.grad.view(-1).detach().clone()]
-        return torch.cat(grads)
+
+    def vae_loss(self, recon_x, x, mean, log_var):
+        #eps = 1e-6 #for stability
+        #likelihood part
+        bernoulli_loss = F.binary_cross_entropy(recon_x, x, reduction='sum')
+        #now the KL part
+        kl = - 0.5 * torch.sum(1+log_var - mean**2 - torch.exp(log_var))
+        return bernoulli_loss + kl #both terms are positive but then flip sign later
+    
+    def get_fisher(self, dataset,sample_size=50000):
+        fisher_diag = None
+        self.eval()
+        batch_size = 1 #to prevent weird errors from summing before squaring
+        device = self.shared[0].weight.device
+        idx = torch.randperm(len(dataset))[:sample_size]
+        subset = Subset(dataset, idx)
+        data_loader = DataLoader(subset, shuffle=False, batch_size=batch_size) #shuffle doesn't matter 
+        #calculate the fisher information matrix on dataset D for current parameters
+        for x,y in data_loader:
+            x,y = x.to(device),y.to(device)
+            self.zero_grad()
+            #forward through the model to get likelihood
+            output, mean, log_var = self(x) #-> returns [B,C]
+            #calc the VAE loss
+            
+            loss = self.vae_loss(output, x, mean, log_var) #this is mean!
+            #take the gradient
+            loss.backward()
+            # concat and flatten all the gradients
+            grads = torch.cat([params.grad.clone().detach().view(-1) for params in self.shared.parameters()])
+            #square the gradient
+            squared_grads = grads ** 2
+            if fisher_diag is None:
+                fisher_diag = torch.zeros_like(squared_grads, device=device)
+            fisher_diag += squared_grads
+            
+            #TODO paper doesn't average but Probabilistic ML 2 in formula 3.53 averages
+        self.zero_grad()
+        fisher_diag = fisher_diag/sample_size #TODO consider if we should take mean or sum
+        self.train()
+        return fisher_diag
+
     
     def get_encoders(self):
         encoders = copy.deepcopy(self.encoders)
@@ -175,16 +221,22 @@ class GenerativeModel(nn.Module):
         add a new head to the model and set active head to this head
         '''
         # move the old head to the same device as previous head
-        device = self.heads[-1].weight.device if len(self.heads) > 0 else self.linear.weight.device
-        new_head = nn.Linear(self.latent_dim, self.hidden_dim).to(device)
+        device = self.shared[0].weight.device
+        new_head = nn.Sequential(
+            nn.Linear(self.latent_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim)
+        ).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
         print("Added new head, current head index: ", self.active_head)
 
     def add_encoder(self):
-        device = self.encoders[-1][0].weight.device if len(self.encoders) > 0 else self.linear.weight.device
+        device = self.shared[0].weight.device
         new_encoder = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Linear(self.hidden_dim, 2* self.latent_dim) #to predict mean and log(sigma^2)
         ).to(device)
@@ -242,11 +294,9 @@ class GenerativeModel(nn.Module):
 
         h = F.relu(self.heads[self.active_head](z))
 
-        normalized_y = F.sigmoid(self.linear(h))
+        normalized_y = F.sigmoid(self.shared(h))
 
         return normalized_y
-
-
 
     def forward(self, x):
         #get bs
@@ -268,7 +318,7 @@ class GenerativeModel(nn.Module):
 
         h = F.relu(self.heads[self.active_head](z))
 
-        normalized_y = F.sigmoid(self.linear(h))
+        normalized_y = F.sigmoid(self.shared(h))
 
         #normalized_y = F.sigmoid(self.last_layer(h))
 

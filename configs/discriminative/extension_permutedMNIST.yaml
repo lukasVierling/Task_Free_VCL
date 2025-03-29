@@ -1,15 +1,19 @@
-algorithm_name: "VI"
-num_tasks: 3
-epochs: 5
+algorithm_name: "gated_VI"
+num_tasks: 10
+epochs: 10
 lr: 0.001
-hidden_dim: 32
+hidden_dim: 100
 batch_size: 256
-mode : "regression"
-single_head : False
-current_window : 1
-baseline_window : 50
-c : 5
+mode: "bernoulli"
+single_head: False
+current_window: 1
+baseline_window: 50
+c: 5
 num_samples: 50
-var : 0.01
-routing_mode : "batchwise"
-calculation_mode: "closed_form"
+var: 0.01
+routing_mode: "batchwise"
+calculation_mode: "sampling"
+seed: 5
+autoencoder_hidden_dim: 1
+automatic_detection: True
+id: "autodim_2"

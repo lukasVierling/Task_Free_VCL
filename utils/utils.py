@@ -152,6 +152,19 @@ def get_mle_estimate(model, dataset, device):
         }]
     return var_dist
 
+def kl_div_gaussian_for_gen(p,q):
+    loss = 0
+    #encoder 1
+    p_encoder_1 = p["layer1"]
+    q_encoder_1 = q["layer1"]
+    loss += kl_div_gaussian_layer(p_encoder_1,q_encoder_1)
+    # encoder 2
+    p_encoder_2 = p["layer2"]
+    q_encoder_2 = q["layer2"]
+    loss += kl_div_gaussian_layer(p_encoder_2,q_encoder_2)
+    #should usually be only 1 head for single head setup
+    return loss
+
 def kl_div_gaussian(p,q):
     loss = 0
     #encoder 1

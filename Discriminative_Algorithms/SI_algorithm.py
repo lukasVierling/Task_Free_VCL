@@ -26,16 +26,14 @@ def train_one_task(model, omega, prev_theta, c, curr_dataset, train_datasets ,ba
             #forward through the model to get likelihood
             output = model(x) #-> returns [B,C]
             #calc the likelihood
-            probs = output.gather(1, y.view(-1, 1)).squeeze() # index output to get [B]
-            log_probs = torch.log(probs + 1e-8) #for numeric stability
-            lhs = log_probs.mean() #TODO somehow mean and sum got almost same results lol
+            lhs = F.cross_entropy(output,y)
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if omega is not None:
                 #rhs = 0
                 rhs = c * contribution_loss(model, prev_theta, omega) #mult with c constant
             else:
                 rhs = 0
-            loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?
+            loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?
 
             loss.backward()
             optimizer.step()

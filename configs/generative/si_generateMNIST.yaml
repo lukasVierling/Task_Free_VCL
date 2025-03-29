@@ -1,9 +1,12 @@
 algorithm_name: "SI"
 num_tasks: 10
-epochs: 200 #should be 200
+epochs: 400 #should be 200
 lr: 0.0001 #reduce to 10^-4
 hidden_dim: 500
 latent_dim: 50
-c : 0.1
-damping_param : 0.001
+c: 1
+damping_param: 0.000001
 batch_size: 256
+seed: 6
+id: 0
+save_folder: "10_runs_LP"

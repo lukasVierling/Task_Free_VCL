@@ -36,9 +36,13 @@ def parse_config(config_path):
 
 
 def main(config_path, id="0", save=True):
+    config = parse_config(config_path)
+    print("Finished reading config")
 
     #make stuff deterministic
-    seed = 1
+    save_folder = config["save_folder"]
+    id = config["id"]
+    seed = config["seed"]
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -54,8 +58,6 @@ def main(config_path, id="0", save=True):
     input_dim = 28*28
     output_dim = 10 
 
-    config = parse_config(config_path)
-    print("Finished reading config")
     #dataset
     num_tasks = config["num_tasks"]
     print(f"Dataset parameters: \n  num_tasks:{num_tasks}")
@@ -137,10 +139,10 @@ def main(config_path, id="0", save=True):
         "accuracies": acc_list,
         "seed": seed
     }
-    os.makedirs('100_epochs_2l_3', exist_ok=True)
+    os.makedirs(f'{save_folder}', exist_ok=True)
     #save the accs
     if save:
-        with open(f'100_epochs_2l_3/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'{save_folder}/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4)
 
 

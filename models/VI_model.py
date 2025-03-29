@@ -16,8 +16,8 @@ class BayesianLayer(nn.Module):
         #self.W_mu = nn.Parameter(torch.empty(input_dim, hidden_dim))
         #nn.init.kaiming_uniform_(self.W_mu, a=math.sqrt(5))
         self.b_mu = nn.Parameter(torch.rand(output_dim) * 2 * math.sqrt(k)-math.sqrt(k))
-        self.W_sigma = nn.Parameter(torch.randn(input_dim, output_dim) * 0.1 - 6)
-        self.b_sigma = nn.Parameter(torch.randn(output_dim) * 0.1- 6) #TODO Going form -3 to -7 increase acc by 10%!!
+        self.W_sigma = nn.Parameter(torch.full((input_dim, output_dim), -6.0))
+        self.b_sigma = nn.Parameter(torch.full((output_dim,), -6.0))
     
 
     def get_var_dist(self, detach=True):
@@ -157,36 +157,24 @@ class DiscriminativeModel(nn.Module):
 
         # forward throught head
         y = self.heads[self.active_head](z)
-
-        if self.mode == "bernoulli":
-            probs = F.softmax(y, dim=-1)
-        elif self.mode=="regression":
-            probs = y
-        return probs
-
+        return y
 
 class GenerativeModel(nn.Module):
+
     def __init__(self, input_dim, output_dim, hidden_dim, latent_dim):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.latent_dim = latent_dim
-        k = 1 / hidden_dim
         # first hidden layer -> fld layer in one parameter vector
         # Bayesian first hidden layer parameters (mean & log variance)
-        self.last_layer = torch.nn.Linear(hidden_dim,output_dim)
-        self.W_mu = nn.Parameter(torch.rand(hidden_dim, output_dim) * 2 * math.sqrt(k)-math.sqrt(k)) #TODO check if better when sampling form U(sqrt(k), sqrt(k))
-        #nn.init.kaiming_uniform_(self.W_mu, a=math.sqrt(5))
-        scale = 0.1
-        shift = 7.0
-        self.b_mu = nn.Parameter(torch.rand(output_dim) * 2 * math.sqrt(k)-math.sqrt(k))
-        self.W_sigma = nn.Parameter(torch.randn(hidden_dim, output_dim) * scale - shift)
-        self.b_sigma = nn.Parameter(torch.randn(output_dim) * scale- shift) #TODO Going form -3 to -7 increase acc by 10%!!
-
-        print(f"Initialize a model with Variance of {math.exp(-shift)}"  )
         # second hidden layer, bayesian layer
-
+        self.shared = nn.Sequential(
+            BayesianLayer(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            BayesianLayer(hidden_dim, output_dim)
+        )
         #self.W_sigma = torch.nn.Parameter(torch.full((hidden_dim, output_dim), 1e-6))
         #self.b_sigma = torch.nn.Parameter(torch.full((output_dim,), 1e-6))
 
@@ -213,48 +201,40 @@ class GenerativeModel(nn.Module):
         self.encoders = copy.deepcopy(encoders)
     
     def get_var_dist(self, detach=True):
-        if detach:
-            var_dist = {"W_mu": self.W_mu.detach().clone(), 
-                        "W_sigma": self.W_sigma.detach().clone(), 
-                        "b_mu":self.b_mu.detach().clone(), 
-                        "b_sigma": self.b_sigma.detach().clone()
-                        }
-        else:
-            var_dist = {"W_mu": self.W_mu, 
-                        "W_sigma": self.W_sigma, 
-                        "b_mu":self.b_mu, 
-                        "b_sigma": self.b_sigma
-                        }
+
+        var_dist = {}
+        var_dist["layer1"] = self.shared[0].get_var_dist(detach)
+        var_dist["layer2"] = self.shared[2].get_var_dist(detach)
+        
         return var_dist
 
     def set_var_dist(self, var_dist):
-        #get  current device
-        device = self.W_mu.device
-        # detach them from any comp graph and trainable through nn.param
-        print("Initialize the shared layer with new var_dist")
-        self.W_mu = torch.nn.Parameter(var_dist["W_mu"].detach().clone().to(device))
-        self.b_mu = torch.nn.Parameter(var_dist["b_mu"].detach().clone().to(device))
-        self.W_sigma = torch.nn.Parameter(var_dist["W_sigma"].detach().clone().to(device))
-        self.b_sigma = torch.nn.Parameter(var_dist["b_sigma"].detach().clone().to(device))
-
+        self.shared[0].set_var_dist(var_dist["layer1"])
+        self.shared[2].set_var_dist(var_dist["layer2"])
     
     def add_head(self):
         '''
         add a new head to the model and set active head to this head
         '''
         # move the old head to the same device as previous head
-        device = self.heads[-1].weight.device if len(self.heads) > 0 else self.W_mu.device
-        new_head = nn.Linear(self.latent_dim, self.hidden_dim).to(device)
+        device = self.shared[0].W_mu.device
+        new_head = nn.Sequential(
+            BayesianLayer(self.latent_dim, self.hidden_dim),
+            nn.ReLU(),
+            BayesianLayer(self.hidden_dim, self.hidden_dim)
+        ).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
         print("Added new head, current head index: ", self.active_head)
 
     def add_encoder(self):
-        device = self.encoders[-1][0].weight.device if len(self.encoders) > 0 else self.W_mu.device
+        device = self.shared[0].W_mu.device
         new_encoder = nn.Sequential(
-            nn.Linear(self.input_dim, self.hidden_dim),
+            BayesianLayer(self.input_dim, self.hidden_dim),
             nn.ReLU(),
-            nn.Linear(self.hidden_dim, 2* self.latent_dim) #to predict mean and log(sigma^2)
+            BayesianLayer(self.hidden_dim, self.hidden_dim),
+            nn.ReLU(),
+            BayesianLayer(self.hidden_dim, self.latent_dim * 2)
         ).to(device)
         self.encoders.append(new_encoder)
         self.active_encoder = len(self.encoders)-1
@@ -310,14 +290,8 @@ class GenerativeModel(nn.Module):
 
         h = F.relu(self.heads[self.active_head](z))
 
-        W_epsilon = torch.randn_like(self.W_sigma) #randn for normal dist (0,1) default
-        b_epsilon = torch.randn_like(self.b_sigma)
-
-        W = self.W_mu + torch.exp(0.5*self.W_sigma) * W_epsilon
-        b = self.b_mu + torch.exp(0.5*self.b_sigma) * b_epsilon
-        
         # forward through shared layer
-        y = h @ W  + b
+        y = self.shared(h)
 
         #values between 0 and 1
         normalized_y = F.sigmoid(y)
@@ -348,18 +322,13 @@ class GenerativeModel(nn.Module):
 
         h = F.relu(self.heads[self.active_head](z))
 
-        W_epsilon = torch.randn_like(self.W_sigma) #randn for normal dist (0,1) default
-        b_epsilon = torch.randn_like(self.b_sigma)
-
-        W = self.W_mu + torch.exp(0.5*self.W_sigma) * W_epsilon
-        b = self.b_mu + torch.exp(0.5*self.b_sigma) * b_epsilon
-        
         # forward through shared layer
-        y = h @ W  + b
+        y = self.shared(h)
 
         #values between 0 and 1
         normalized_y = F.sigmoid(y)
 
+        #normalized_y = F.sigmoid(self.last_layer(h))
 
         #normalized_y = F.sigmoid(self.last_layer(h))
 

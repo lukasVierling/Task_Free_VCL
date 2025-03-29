@@ -36,6 +36,6 @@ class PermutedMNIST(Dataset):
         
         x,y = self.data[idx]
         x_flat = x.view(-1)
-        x_permuted = x_flat[self.permutation].view(1, 28,28)
+        x_permuted = x_flat[self.permutation]
 
         return x_permuted, y

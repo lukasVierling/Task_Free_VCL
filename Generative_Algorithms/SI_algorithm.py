@@ -109,6 +109,8 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
         one_hot = F.one_hot(torch.full((num_samples,), label, device=device), num_classes=10).float() #hardcode 10 for mnist
         kl_div = F.kl_div(torch.log(probs), one_hot, reduction="mean") #expects log probabilities
         uncertainty_measure = kl_div
+
+        #sample performance
         sample_generations(model, None, curr_test_dataset, batch_size, device)
 
         ###

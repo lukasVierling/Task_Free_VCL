@@ -10,7 +10,7 @@ import math
 import os
 import torch.nn.functional as F
 # my imports
-from utils.utils import kl_div_gaussian
+from utils.utils import kl_div_gaussian_for_gen
 
 def init_coreset_variational_approx(prior):
     '''
@@ -78,7 +78,7 @@ def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train
 def vae_loss(recon_x, x, mean, log_var):
     #eps = 1e-6 #for stability
     #likelihood part
-    bernoulli_loss = F.binary_cross_entropy(recon_x, x, reduction='sum')
+    bernoulli_loss = F.binary_cross_entropy(recon_x, x, reduction='mean')
     #now the KL part
     kl = - 0.5 * torch.sum(1+log_var - mean**2 - torch.exp(log_var))
     return bernoulli_loss + kl #both terms are positive but then flip sign later
@@ -103,8 +103,8 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if prior is not None:
-                rhs = kl_div_gaussian(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
-                rhs = rhs * batch_size / len(dataset)
+                rhs = kl_div_gaussian_for_gen(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
+                rhs = rhs /len(dataset)
                 #rhs = 0
             else:
                 rhs = 0
@@ -118,6 +118,7 @@ def update_final_var_dist_and_test(task_idx, model, prior ,prior_heads,prior_enc
     llhs = []
     prev_head = model.get_active_head_idx()
     prev_encoder = model.get_active_encoder_idx()
+
     #optimize the KL between q_t tilde and q_t with likelihood over coreset_t
     if curr_coreset is not None:
         for idx, coreset in enumerate(curr_coreset[:task_idx+1]):
@@ -168,13 +169,19 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
         #get the noise vectors
         z = torch.randn(num_samples, model.latent_dim).to(device)
         # decode the vectors with the model
-        flat_images = model.decode(z).view(num_samples, 1, 28, 28)
+        #calc the integral over weights
+        flat_images = 0
+        for _ in range(num_samples):
+            flat_images += model.decode(z).view(num_samples, 1, 28, 28)
+        flat_images = flat_images/num_samples
         #classify the images
         probs = classifier.get_probs(flat_images)
         #calc the KL div with the one-hot vector
         one_hot = F.one_hot(torch.full((num_samples,), label, device=device), num_classes=10).float() #hardcode 10 for mnist
         kl_div = F.kl_div(torch.log(probs), one_hot, reduction="mean") #expects log probabilities
         uncertainty_measure = kl_div
+
+        #sample performance
         sample_generations(model, None, curr_test_dataset, batch_size, device)
 
         ###
@@ -264,29 +271,6 @@ def sample_generations(model, classifier, curr_test_dataset, batch_size,device):
 
     print(f"[INFO] Saved generations to: {save_path}")
 
-    return 1 #TODO implement evaluation
-    '''
-    data_loader = DataLoader(curr_test_dataset, batch_size=batch_size)
-    labels = []
-    correct = 0
-    model.eval()
-    with torch.no_grad():
-        for x,y in tqdm(data_loader,desc="Testing Performance"):
-            x,y = x.to(device),y.to(device)
-            probs = model(x)
-            pred = torch.argmax(probs, dim=-1)
-            correct += torch.sum(pred == y)
-            #print(pred.shape)
-            labels.extend(pred.tolist())
-
-    model.train()
-    labels = torch.tensor(labels)
-    #print("Tested with accuracy: " ,correct/len(labels))
-    acc = correct/len(labels)
-    return acc
-    '''
-
-
 def coreset_vcl(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random", device="cpu"):
     '''
     Input:
@@ -315,7 +299,6 @@ def coreset_vcl(model, train_datasets, test_datasets, classifier, batch_size, ep
         #TODO do we have to reinitialize the model here? 
         # get the current dataset D_i
         curr_dataset = train_datasets[i]
-        curr_test_dataset = test_datasets[i]
         # update the coreset with D_i
         curr_coresets, coreset_idx = new_coreset(coreset_idx, curr_dataset, train_datasets, coreset_size=coreset_size, heuristic=coreset_heuristic)
         if use_coreset:

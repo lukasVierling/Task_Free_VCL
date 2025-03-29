@@ -7,6 +7,7 @@ import argparse
 import sys
 import os
 import json
+import random
 #sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #my imports
 from Generative_Algorithms.VI_algorithm import coreset_vcl
@@ -31,13 +32,26 @@ def parse_config(config_path):
 
 
 def main(config_path, id="0", save=True):
+    config = parse_config(config_path)
+    print("Finished reading config")
+
+    #make stuff deterministic
+    save_folder = config["save_folder"]
+    id = config["id"]
+    seed = config["seed"]
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = f'{seed}'
 
     #constants for MNIST
     input_dim = 28*28
     output_dim = input_dim #generative setting 
 
-    config = parse_config(config_path)
-    print("Finished reading config")
     #dataset
     num_tasks = config["num_tasks"]
     print(f"Dataset parameters: \n  num_tasks:{num_tasks}")
@@ -130,10 +144,10 @@ def main(config_path, id="0", save=True):
         "config": config,
         "results": results
     }
-    os.makedirs('200epochs_gen', exist_ok=True)
+    os.makedirs(f'{save_folder}', exist_ok=True)
     #save the accs
     if save:
-        with open(f'200epochs_gen/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'{save_folder}/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4)
 
 if __name__=="__main__":

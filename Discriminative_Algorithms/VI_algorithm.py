@@ -61,7 +61,7 @@ def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train
     #minimize the KL div
     minimize_KL(model, prior, train_dataset, batch_size, epochs, lr, device)
 
-def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
+def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device, num_samples=10):
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -74,20 +74,21 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             optimizer.zero_grad()
             model.zero_grad()
             #forward through the model to get likelihood
-            output = model(x) #-> returns [B,C]
-            #calc the likelihood
-            if model.mode == "regression":
-                #in regression mode no softmax over output
-                #create one hot vectors R^10
-                one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
-                #calc MSE
-                lhs = -0.5* F.mse_loss(output, one_hot_labels, reduction="mean") / ( 1**2) #assume sigma = 1 but maybe change alter
+            lhs=0
+            for _ in range(num_samples):
+                output = model(x) #-> returns [B,C]
+                #calc the likelihood
+                if model.mode == "regression":
+                    #in regression mode no softmax over output
+                    #create one hot vectors R^10
+                    one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
+                    #calc MSE
+                    lhs += 0.5* F.mse_loss(output, one_hot_labels, reduction="mean") / ( 1**2) #assume sigma = 1 but maybe change alter
 
-            else:
-                probs = output.gather(1, y.view(-1, 1)).squeeze() # index output to get [B]
-                log_probs = torch.log(probs + 1e-8) #for numeric stability
-                lhs = log_probs.mean() #TODO should we do mean or sum and should we divide? 
-            # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
+                else:
+                    lhs += F.cross_entropy(output,y)
+                # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
+            lhs = lhs / num_samples
             if prior is not None:
                 rhs = kl_div_gaussian(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
                 rhs = rhs/len(dataset)
@@ -95,7 +96,7 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             else:
                 rhs = 0
             #print(f"Epoch {epoch}: Log-Likelihood = {lhs.item()}, KL = {rhs.item()}")
-            loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo
+            loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo
             loss.backward()
             optimizer.step()
 
@@ -134,9 +135,9 @@ def update_final_var_dist_and_test(task_idx, model, prior, prior_heads, curr_cor
                 accs.append(perform_predictions(model, test_datasets[idx], batch_size, device))
                 print("test acc after additional finetuning: ",accs[-1])
                 #reset the finetuning
-                model.set_var_dist(prior)
-                if not(model.single_head):
-                    model.set_heads(prior_heads)
+                model.set_var_dist(prior) #TODO this should also set the head parameters
+                #if not(model.single_head):
+                 #   model.set_heads(prior_heads)
     else:
         for idx, test_dataset in enumerate(test_datasets[:task_idx+1]):
             #coreset is a small dataset
@@ -165,12 +166,12 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
             #evaluate the integral over weights via monte carlo estimate
             probs = []
             for _ in range(num_samples):
-                probs.append(model(x))
+                probs.append(F.softmax(model(x),dim=1))
             probs = torch.stack(probs).mean(dim=0)
 
             if model.mode == "regression":
                 one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
-                se = F.mse_loss(probs, one_hot_labels, reduction="sum")
+                se = F.mse_loss(probs, one_hot_labels, reduction="sum") #TODO mean here? ??
                 squared_errors.append(se.item())
             else:
                 pred = torch.argmax(probs, dim=-1)
@@ -196,6 +197,9 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
     Output: 
     - [(q_t,p_t)] t=1,...,T : Variational and predictive distribution at each step
     '''
+    ### Notes
+
+    ###
     model.to(device)
     ret = []
     use_coreset = coreset_size > 0
@@ -214,7 +218,7 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
     model_init = get_mle_estimate(model, train_datasets[0], device)
     # get the number of datasets T
     model.set_var_dist(model_init)
-    print("Acc:", perform_predictions(model, test_datasets[0],256,device))
+    print("Acc:", perform_predictions(model, test_datasets[0], 256, device))
 
     #optimizer
     #optimizer = torch.optim.Adam(model.parameters(), lr=lr)

@@ -32,15 +32,13 @@ def train_one_task(model, fisher_diags, phis, curr_dataset, train_datasets ,batc
             #forward through the model to get likelihood
             output = model(x) #-> returns [B,C]
             #calc the likelihood
-            probs = output.gather(1, y.view(-1, 1)).squeeze() # index output to get [B]
-            log_probs = torch.log(probs + 1e-8) #for numeric stability
-            lhs = log_probs.mean()
+            lhs = F.cross_entropy(output,y)
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if phis:
                 rhs = laplace_reg(model, fisher_diags, phis)
             else:
                 rhs = 0
-            loss = -lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?
+            loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?
             loss.backward()
             optimizer.step()
 

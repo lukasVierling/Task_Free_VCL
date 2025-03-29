@@ -30,10 +30,7 @@ def evaluate_model(task_idx, model, test_datasets, batch_size,device ,num_sample
     model.activate_head(prev_head)
     mean_accs = sum(accs)/len(accs)
     return mean_accs, heads_chosen_stat
-
-
-
-def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=100, routing_mode="batchwise", calculation_mode="sampling", var=0.01):
+def perform_predictions(model, curr_test_dataset, batch_size, device, num_samples, routing_mode="batchwise", calculation_mode="sampling", var=0.01):
     data_loader = DataLoader(curr_test_dataset, batch_size=batch_size)
     labels = []
     squared_errors = []
@@ -70,7 +67,8 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
                 correct += torch.sum(pred == y)
                 #print(pred.shape)
                 labels.extend(pred.tolist())
-    print("Average acc: ", sum(accs)/len(accs))
+    if model.mode == "regression":
+        print("Average acc: ", sum(accs)/len(accs))
     model.train()
     labels = torch.tensor(labels)
     #print("Tested with accuracy: " ,correct/len(labels))
@@ -80,6 +78,7 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
     else:
         metrics = correct/len(labels)
     return metrics, heads_chosen
+
 
 def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cpu", baseline_window_size=50, current_window_size=1, c=5, num_samples=25, var=0.01, calculation_mode="sampling", routing_mode="batchwise",automatic_detection=False):
     '''
@@ -91,7 +90,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     '''
     model.to(device)
     ret = collections.defaultdict(list)
-    print(f"Detection uses baseline window size: {baseline_window_size} current window size: {current_window_size} and a std factor of {c}")
+    print(f"Detection uses baseline window size: {baseline_window_size} current window size: {current_window_size} and a std factor of {c}, automatic detection : {automatic_detection}, calc MI with {calculation_mode}")
     
     #prior in the model is already implemented all values sampled from gaussian
     prior = None
@@ -107,7 +106,6 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     #model.set_var_dist(model_init["encoder"])TODO later remove
     #model.set_heads(model_init["heads"])
     #print("Acc:", perform_predictions(model, test_datasets[0],256,device))
-
 
     #Mi setup
     baseline_mi = collections.deque(maxlen=baseline_window_size)
@@ -163,7 +161,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
                     rhs = model.kl_divergence()
                     rhs = rhs/len(curr_dataset)
                 elif model.mode=="bernoulli" and prior is not None:
-                    kl = kl_div_gaussian_layer(model.get_var_dist(detach=False), prior)
+                    rhs = kl_div_gaussian_layer(model.get_var_dist(detach=False), prior)/len(curr_dataset)
 
                 #rhs = 0
                 #print(lhs)
