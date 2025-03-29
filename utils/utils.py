@@ -66,6 +66,28 @@ def get_mle_estimate_extension(model, dataset, device):
     return var_dist
 
 
+def get_standard_normal_prior_gen(model, device):
+        hidden_dim = model.hidden_dim
+        output_dim = model.output_dim
+        encoder_1 = {
+            "W_mu": nn.Parameter(torch.zeros(hidden_dim, hidden_dim)).to(device),
+            "b_mu": nn.Parameter(torch.zeros(hidden_dim)).to(device),
+            "W_sigma": nn.Parameter(torch.zeros(hidden_dim, hidden_dim)).to(device),
+            "b_sigma": nn.Parameter(torch.zeros(hidden_dim)).to(device)
+        }
+        encoder_2 = {
+            "W_mu": nn.Parameter(torch.zeros(hidden_dim, output_dim)).to(device),
+            "b_mu": nn.Parameter(torch.zeros(output_dim)).to(device),
+            "W_sigma": nn.Parameter(torch.zeros(hidden_dim, output_dim)).to(device),
+            "b_sigma": nn.Parameter(torch.zeros(output_dim)).to(device)
+        }
+        var_dist = {}
+        var_dist["layer1"] = encoder_1
+        var_dist["layer2"] = encoder_2
+
+
+        return var_dist
+
 
 def get_standard_normal_prior(model, device):
         input_dim = model.input_dim

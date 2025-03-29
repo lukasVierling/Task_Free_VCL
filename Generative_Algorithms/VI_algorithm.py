@@ -10,7 +10,7 @@ import math
 import os
 import torch.nn.functional as F
 # my imports
-from utils.utils import kl_div_gaussian_for_gen
+from utils.utils import kl_div_gaussian_for_gen, get_standard_normal_prior_gen
 
 def init_coreset_variational_approx(prior):
     '''
@@ -78,7 +78,7 @@ def update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train
 def vae_loss(recon_x, x, mean, log_var):
     #eps = 1e-6 #for stability
     #likelihood part
-    bernoulli_loss = F.binary_cross_entropy(recon_x, x, reduction='mean')
+    bernoulli_loss = F.binary_cross_entropy(recon_x, x, reduction='sum')
     #now the KL part
     kl = - 0.5 * torch.sum(1+log_var - mean**2 - torch.exp(log_var))
     return bernoulli_loss + kl #both terms are positive but then flip sign later
@@ -91,7 +91,8 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
     if not(prior):
         print("Prior is None")
     for epoch in tqdm(range(epochs), desc="Training"):
-        for x,y in tqdm(data_loader, desc=f"Training in Epoch: {epoch}"): 
+        pbar = tqdm(data_loader, desc=f"Training in Epoch: {epoch}")
+        for x,y in pbar: 
             x,y = x.to(device),y.to(device)
             optimizer.zero_grad()
             model.zero_grad()
@@ -104,13 +105,14 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if prior is not None:
                 rhs = kl_div_gaussian_for_gen(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
-                rhs = rhs /len(dataset)
+                rhs = rhs #TODO divide by len dataset
                 #rhs = 0
             else:
                 rhs = 0
             loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo Note: no sign flip for lhs because already nll
             loss.backward()
             optimizer.step()
+            pbar.set_description(f"Current lhs: {lhs} and Current rhs: {rhs}")
 
 def update_final_var_dist_and_test(task_idx, model, prior ,prior_heads,prior_encoders, classifier, curr_coreset, test_datasets, batch_size, epochs, lr, device):
     # get a new distribution q
@@ -263,7 +265,7 @@ def sample_generations(model, classifier, curr_test_dataset, batch_size,device):
     # Filename
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"vi_generation_{timestamp}.png"
+        filename = f"mean_timesBS_vi_generation_{timestamp}.png"
 
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path)
@@ -288,7 +290,7 @@ def coreset_vcl(model, train_datasets, test_datasets, classifier, batch_size, ep
     else:
         print("Initialize an empty coreset")
     #prior in the model is already implemented all values sampled from gaussian
-    prior = None
+    prior = get_standard_normal_prior_gen(model,device) #inshallah klappt
     # get the number of datasets T
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):

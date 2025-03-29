@@ -288,7 +288,7 @@ class GenerativeModel(nn.Module):
     def decode(self,z):
         # use individual head
 
-        h = F.relu(self.heads[self.active_head](z))
+        h = F.relu(self.heads[self.active_head](z)) #TODO remove the relu part
 
         # forward through shared layer
         y = self.shared(h)
