@@ -8,4 +8,4 @@ batch_size: 200
 latent_dim: 50
 seed: 100
 id: 1
-save_folder: "10_runs_gen_final"
+save_folder: "10_runs_ewc_gen_final"

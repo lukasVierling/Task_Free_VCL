@@ -9,4 +9,4 @@ coreset_heuristic: "random"
 batch_size: 256
 seed: 104
 id: 4
-save_folder: "10_runs_vi_final"
+save_folder: "results/generative/10_runs_gen_vi_final"

@@ -144,9 +144,11 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
             log_q_z = torch.sum(log_q_z, dim=1)
             log_p_z = -0.5* math.log(2*math.pi) - z**2 * 0.5
             log_p_z = torch.sum(log_p_z, dim=1)
-            
             #obtain log likelihood
+            #numeric stability prevent NaN
             img_mean = model.decode(z)
+            eps = 1e-7 
+            img_mean = img_mean.clamp(eps, 1 - eps)
             log_p_x_z = x * torch.log(img_mean) + (1-x) * torch.log(1-img_mean)
             log_p_x_z = log_p_x_z.view(batch_size*K, -1).sum(dim=1)
 

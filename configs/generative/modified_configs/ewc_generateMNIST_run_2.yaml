@@ -6,6 +6,6 @@ hidden_dim: 100
 lambdas: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
 batch_size: 200
 latent_dim: 50
-seed: 102
-id: 3
-save_folder: "10_runs_gen_final"
+seed: 103
+id: 5
+save_folder: "10_runs_ewc_gen_final"

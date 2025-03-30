@@ -9,4 +9,4 @@ damping_param: 0.1
 batch_size: 256
 seed: 108
 id: 9
-save_folder: "10_runs_si_final"
+save_folder: "10_runs_si_final_gen_numeric"

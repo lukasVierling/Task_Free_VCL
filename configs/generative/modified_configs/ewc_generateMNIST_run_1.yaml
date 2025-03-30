@@ -7,5 +7,5 @@ lambdas: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
 batch_size: 200
 latent_dim: 50
 seed: 101
-id: 2
-save_folder: "10_runs_gen_final"
+id: 3
+save_folder: "10_runs_ewc_gen_final"

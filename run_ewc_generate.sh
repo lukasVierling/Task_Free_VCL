@@ -3,9 +3,9 @@
 export CUDA_VISIBLE_DEVICES=0
 
 # Define arrays of hyperparameters for multiple runs
-lambd_values=(10 10 10 10 10 10 10 10 10 10)
-seed_values=(100 101 102 103 104 105 106 107 108 109)
-ids=(1 2 3 4 5 6 7 8 9)
+lambd_values=(10 10 10 10 10)
+seed_values=(100 101 103 106 108)
+ids=(1 3 5 7 9)
 
 # Base config file path
 base_config="configs/generative/ewc_generateMNIST.yaml"
