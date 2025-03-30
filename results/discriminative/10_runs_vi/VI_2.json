@@ -1,0 +1,30 @@
+{
+    "config": {
+        "algorithm_name": "VI",
+        "num_tasks": 10,
+        "epochs": 100,
+        "lr": 0.001,
+        "hidden_dim": 100,
+        "coreset_size": 0,
+        "coreset_heuristic": "random",
+        "batch_size": 256,
+        "mode": "bernoulli",
+        "single_head": true,
+        "seed": 102,
+        "id": 2,
+        "save_folder": "10_runs_vi_final"
+    },
+    "accuracies": [
+        0.9812999963760376,
+        0.9619499444961548,
+        0.9539999961853027,
+        0.9488499760627747,
+        0.9408199191093445,
+        0.9351500272750854,
+        0.9316428303718567,
+        0.9060249924659729,
+        0.895111083984375,
+        0.8864900469779968
+    ],
+    "seed": 102
+}

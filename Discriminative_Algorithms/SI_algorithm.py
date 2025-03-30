@@ -30,7 +30,7 @@ def train_one_task(model, omega, prev_theta, c, curr_dataset, train_datasets ,ba
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if omega is not None:
                 #rhs = 0
-                rhs = c * contribution_loss(model, prev_theta, omega) #mult with c constant
+                rhs = c * contribution_loss(model, prev_theta, omega) * batch_size #mult with c constant
             else:
                 rhs = 0
             loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?

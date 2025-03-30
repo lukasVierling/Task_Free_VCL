@@ -35,7 +35,7 @@ def train_one_task(model, fisher_diags, phis, curr_dataset, train_datasets ,batc
             lhs = F.cross_entropy(output,y)
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if phis:
-                rhs = laplace_reg(model, fisher_diags, phis)
+                rhs = laplace_reg(model, fisher_diags, phis) * batch_size
             else:
                 rhs = 0
             loss = lhs + rhs # - because we want to maximize ELBO so minimize negative elbo TODO chck if implemented correct?

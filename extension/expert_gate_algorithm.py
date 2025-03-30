@@ -89,7 +89,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     train_losses = []
     recon_losses = []
     accs = []
-    tasks_to_heads_chosen = collections.defaultdict(lambda: collections.defaultdict(int))
+    tasks_to_heads_chosen = []
 
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
@@ -138,11 +138,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
         #get q_t tilde before optimizing to get q_t
         acc, heads_chosen = evaluate_model(i, model, test_datasets, batch_size, device, num_samples=num_samples,routing_mode=routing_mode,calculation_mode=calculation_mode,var=var)
 
-        for task, heads_chosen_new in enumerate(heads_chosen):
-            for head, times in heads_chosen_new.items():
-                tasks_to_heads_chosen[task][head] += times
-
-
+        tasks_to_heads_chosen.append(heads_chosen)
         # Perform prediction at test input x*
         #preds = perform_predictions(model, curr_test_dataset,device)
         #collect intermediate results
@@ -153,11 +149,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
         #model.set_var_dist(prior)TODO reconsider the placement -> should not be used after last epocch
     #return final resutls
     #turn the dict into an object that we can store in the json file
-    tasks_to_heads_chosen_serializable = {
-        task: {head: int(times) for head, times in heads_chosen.items()}
-        for task, heads_chosen in tasks_to_heads_chosen.items()
-    }
-    ret["heads_chosen"] = tasks_to_heads_chosen_serializable
+    ret["heads_chosen"] = tasks_to_heads_chosen
     ret["acc"] = accs
     ret["train_losses"] = train_losses
     ret["recon_losses"] = recon_loss

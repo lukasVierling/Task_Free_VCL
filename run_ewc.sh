@@ -1,5 +1,6 @@
 #!/bin/bash
 # run_experiments.sh
+export CUDA_VISIBLE_DEVICES=1
 
 # Define arrays of hyperparameters for multiple runs
 lambd_values=(100 100 100 100 100 100 100 100 100 100)

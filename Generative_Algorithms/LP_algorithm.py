@@ -226,8 +226,8 @@ def lp(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr,
     model.to(device)
     ret = []
     #init with covariance of gaussian prior
-    hessian_diag = torch.zeros_like(model.get_stacked_params(detach=True)).to(device) #TODO what is the properi nitialization?
-    prev_theta = None #start with MLE 
+    prev_theta = model.get_stacked_params(detach=True) #start with MLE 
+    hessian_diag = torch.ones_like(prev_theta).to(device) #TODO what is the properi nitialization?
     # get the number of datasets T
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):

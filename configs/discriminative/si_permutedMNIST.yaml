@@ -7,6 +7,6 @@ c: 0.05
 damping_param: 0.1
 batch_size: 256
 single_head: True
-seed: 4
+seed: 191
 id: 10
-save_folder: "10_runs_SI"
+save_folder: "10_runs_SI_final2"

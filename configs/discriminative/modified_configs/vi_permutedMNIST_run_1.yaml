@@ -6,8 +6,8 @@ hidden_dim: 100
 coreset_size: 0
 coreset_heuristic: "random"
 batch_size: 256
-mode: "bernoulli"
+mode: "regression"
 single_head: True
 seed: 101
 id: 1
-save_folder: "10_runs_vi_final"
+save_folder: "10_runs_vi_final_regression"

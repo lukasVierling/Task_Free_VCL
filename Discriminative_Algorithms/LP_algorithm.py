@@ -32,7 +32,7 @@ def train_one_task(model, hessian_diag, phi, lambd, curr_dataset, train_datasets
             lhs = F.cross_entropy(output, y)
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if phi is not None:
-                rhs = lambd * laplace_reg(model, hessian_diag, phi)
+                rhs = lambd * laplace_reg(model, hessian_diag, phi) * batch_size
                 #rhs = 0
                 #rhs = rhs / len(curr_dataset)
                 #print("RHS loss:", rhs)
@@ -94,8 +94,10 @@ def lp(model, train_datasets, test_datasets, batch_size, epochs, lr, lambd, devi
     model.to(device)
     ret = []
     #init with covariance of gaussian prior
-    hessian_diag = torch.ones_like(model.get_stacked_params(detach=True)).to(device) #TODO what is the properi nitialization?
-    prev_theta = model.get_stacked_params(detach=True).to(device) #start with MLE #TODO maybe remove if perfromance is worse
+    hessian_diag = torch.ones_like(model.get_stacked_params(detach=True)).to(device)/len(train_datasets[0]) #TODO what is the properi nitialization?
+    prev_theta = torch.zeros_like(model.get_stacked_params(detach=True)).to(device) #start with MLE #TODO maybe remove if perfromance is worse
+    #prev_theta = None
+    #hessian_diag = torch.zeros_like(model.get_stacked_params(detach=True)).to(device)
     # get the number of datasets T
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):

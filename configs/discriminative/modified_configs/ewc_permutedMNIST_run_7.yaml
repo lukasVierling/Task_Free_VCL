@@ -8,4 +8,4 @@ batch_size: 200
 single_head: True
 seed: 107
 id: 7
-save_folder: "10_runs_EWC_final"
+save_folder: "10_runs_EWC_final2"

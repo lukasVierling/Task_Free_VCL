@@ -30,6 +30,7 @@ def evaluate_model(task_idx, model, test_datasets, batch_size,device ,num_sample
     model.activate_head(prev_head)
     mean_accs = sum(accs)/len(accs)
     return mean_accs, heads_chosen_stat
+
 def perform_predictions(model, curr_test_dataset, batch_size, device, num_samples, routing_mode="batchwise", calculation_mode="sampling", var=0.01):
     data_loader = DataLoader(curr_test_dataset, batch_size=batch_size)
     labels = []
@@ -47,7 +48,8 @@ def perform_predictions(model, curr_test_dataset, batch_size, device, num_sample
             #preds, best_head = torch.ones((x.shape[0],model.output_dim)), 0
             preds, best_head = model.forward_with_routing(x, routing_mode=routing_mode, calculation_mode=calculation_mode, var=var, num_samples=num_samples)
             #update head statistics
-            heads_chosen[best_head] += x.shape[0]
+            best_head = best_head #already int
+            heads_chosen[best_head] += x.shape[0] #already int
 
             if model.mode == "regression":
                 one_hot_labels = F.one_hot(y, num_classes=model.output_dim).to(device).float()
@@ -114,10 +116,11 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     #logs for plots:
     train_losses = []
     mutual_infos = []
+    mutual_infos_sampling = []
     means = []
     stds = []
     accs = []
-    tasks_to_heads_chosen = collections.defaultdict(lambda: collections.defaultdict(int))
+    tasks_to_heads_chosen = []
 
     T = len(train_datasets)
     for i in tqdm(range(T), desc="Training on tasks..."):
@@ -176,7 +179,10 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
                 MI = 0
                 if calculation_mode == "sampling":
                     MI = model.get_MI(x,num_samples) #TODO consider evaluating before backprop
+                    sampling_mi = MI.mean()
                 elif calculation_mode == "closed_form" and model.mode == "regression":
+                    sampling_mi = model.get_MI(x,num_samples).mean()
+                    mutual_infos_sampling.append(sampling_mi)
                     MI = model.calc_MI(x,var)
                 mean_MI = MI.mean()
                 model.train()
@@ -208,20 +214,13 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
                 mutual_infos.append(mean_MI.cpu().item())
                 means.append(baseline_mean)
                 stds.append(baseline_std)
-                sampling_mi = 0
-                with torch.no_grad():
-                    sampling_mi = model.get_MI(x,num_samples) #TODO consider evaluating before backprop
-                    sampling_mi = sampling_mi.mean()
                 pbar.set_description(f"Loss {loss.cpu().item()}, MI: {mean_MI.cpu().item()}, Sampling MI: {sampling_mi.item()}")
                 
 
         # Compute the final variational distribution (only used for prediction, and not propagation)
         #get q_t tilde before optimizing to get q_t
         acc, heads_chosen = evaluate_model(i, model, test_datasets, batch_size, device, num_samples=num_samples,routing_mode=routing_mode,calculation_mode=calculation_mode,var=var)
-
-        for task, heads_chosen_new in enumerate(heads_chosen):
-            for head, times in heads_chosen_new.items():
-                tasks_to_heads_chosen[task][head] += times
+        tasks_to_heads_chosen.append(heads_chosen)
 
 
         # Perform prediction at test input x*
@@ -231,7 +230,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
             print(f"Average RMSE of {acc.item()} after training on task {i}")
         
         if model.mode == "bernoulli":
-            print(f"Average RMSE of {acc.item()} after training on task {i}")
+            print(f"Average Acc of {acc.item()} after training on task {i}")
         accs.append(acc.item())
         #heads_chosen_list.append(heads_chosen)
         # init the model with the previous prior so we are not influenced by the coreset training
@@ -243,6 +242,7 @@ def vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, device="cp
     ret["means"] = means
     ret["stds"] = stds
     ret["heads_chosen"] = tasks_to_heads_chosen
+    ret["mutual_info_sampling"] = mutual_infos_sampling
     #print(ret)
     return ret
 

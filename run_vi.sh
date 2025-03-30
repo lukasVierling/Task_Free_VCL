@@ -1,11 +1,11 @@
 #!/bin/bash
 # run_experiments_VI.sh
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=1
 
 # Define arrays of hyperparameters for multiple runs
-coreset_sizes=(0 0 0 0 0 200 200 200 200 200 5000 5000 5000 5000 5000)
-seed_values=(100 101 102 103 104 100 101 102 103 104 100 101 102 103 104)
-ids=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14)
+coreset_sizes=(0 0 0 0 0 1000 1000 1000 1000 1000)
+seed_values=(100 101 102 103 104 100 101 102 103 104)
+ids=(0 1 2 3 4 5 6 7 8 9)
 
 # Base config file path for VI experiments
 base_config="configs/discriminative/vi_permutedMNIST.yaml"

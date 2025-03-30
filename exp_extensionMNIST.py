@@ -19,6 +19,7 @@ from extension.regression_model import BayesianNN as regression_model
 from extension.gating_model import DiscriminativeModel as gated_model
 from extension.softmax_model import DiscriminativeModel as bernoulli_model
 from datasets.permutedMNIST import PermutedMNIST
+import random
 
 def parse_config(config_path):
     with open(config_path) as f:
@@ -31,108 +32,22 @@ def parse_config(config_path):
 import os
 import matplotlib.pyplot as plt
 
-def plot_results(results, save_folder="plots", window_size=100):
-    """Generate plots for head selection distribution and mutual information.
-
-    Args:
-        results (dict): Dictionary with 'heads_chosen' and 'mutual_info'.
-        save_folder (str): Directory to save the plots.
-        window_size (int): Window size for rolling mean and std calculations.
-    """
-    # Create save directory if it doesn’t exist
-    os.makedirs(save_folder, exist_ok=True)
-
-    # Helper function to convert tensors to floats
-    def to_float(x):
-        return x.cpu().item() if isinstance(x, torch.Tensor) else float(x)
-
-    # --- Plot 1: Head Selection Distribution per Task ---
-    heads_chosen = results.get("heads_chosen", {})
-    for task_id, heads_dict in heads_chosen.items():
-        # Ensure heads_dict is a dictionary
-        if not isinstance(heads_dict, (dict, defaultdict)):
-            print(f"Warning: Data for task {task_id} is not a dictionary. Skipping.")
-            continue
-        
-        # Extract head IDs and counts
-        head_ids = sorted(heads_dict.keys())  # Sort for consistent ordering
-        counts = [heads_dict[head] for head in head_ids]
-
-        # Create bar chart
-        plt.figure(figsize=(8, 6))
-        plt.bar(head_ids, counts, color='skyblue')
-        plt.xlabel('Head Index')
-        plt.ylabel('Number of Selections')
-        plt.title(f'Head Selection Distribution for Task {task_id}')
-        plt.xticks(head_ids)  # Ensure all head IDs are shown on x-axis
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_folder, f'heads_chosen_task_{task_id}.png'))
-        plt.close()
-
-    # --- Plot 2: Mutual Information with Rolling Mean and STD Bands ---
-    mi_list = [to_float(x) for x in results.get("mutual_info", [])]
-    if not mi_list:
-        print("No mutual information data provided.")
-        return
-
-    if len(mi_list) < window_size:
-        print(f"MI list length ({len(mi_list)}) is shorter than window size ({window_size}). Plotting raw MI only.")
-        plt.figure(figsize=(10, 6))
-        plt.plot(mi_list, label="MI", alpha=0.5, color='gray')
-        plt.xlabel("Batch Index")
-        plt.ylabel("Mutual Information")
-        plt.title("Mutual Information Over Time")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_folder, "mutual_information.png"))
-        plt.close()
-    else:
-        # Convert MI list to pandas Series for rolling calculations
-        mi_series = pd.Series(mi_list)
-        rolling_mean = mi_series.rolling(window=window_size).mean()
-        rolling_std = mi_series.rolling(window=window_size).std()
-
-        # Create the plot
-        plt.figure(figsize=(10, 6))
-        # Plot raw MI
-        plt.plot(mi_list, label="MI", alpha=0.5, color='gray')
-        # Plot rolling mean
-        plt.plot(rolling_mean, label="Rolling Mean", linewidth=2, color='black')
-        # Shade ±5 std
-        plt.fill_between(range(len(rolling_mean)), 
-                         rolling_mean - 5*rolling_std, 
-                         rolling_mean + 5*rolling_std, 
-                         color='blue', alpha=0.1, label="±5 STD")
-        # Shade ±3 std
-        plt.fill_between(range(len(rolling_mean)), 
-                         rolling_mean - 3*rolling_std, 
-                         rolling_mean + 3*rolling_std, 
-                         color='blue', alpha=0.2, label="±3 STD")
-        # Shade ±1 std
-        plt.fill_between(range(len(rolling_mean)), 
-                         rolling_mean - 1*rolling_std, 
-                         rolling_mean + 1*rolling_std, 
-                         color='blue', alpha=0.3, label="±1 STD")
-        
-        plt.xlabel("Batch Index")
-        plt.ylabel("Mutual Information")
-        plt.title("Mutual Information with Rolling Mean and STD Bands")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_folder, "mutual_information_with_bands.png"))
-        plt.close()
-
 def main(config_path, id="0", save=True):
     #make stuff deterministic
-    import random
-    random.seed(1)
-    np.random.seed(1)
-    torch.manual_seed(1)
+
+    config = parse_config(config_path)
+    print("Finished reading config")
+    seed = config["seed"]
+    id = config["id"]
+    save_folder = config["save_folder"]
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(1)
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    os.environ['PYTHONHASHSEED'] = '1'
+    os.environ['PYTHONHASHSEED'] = f'{seed}'
 
     print(f"Save run under id:{id} and save run is: {save}")
 
@@ -140,8 +55,6 @@ def main(config_path, id="0", save=True):
     input_dim = 28*28
     output_dim = 10 
 
-    config = parse_config(config_path)
-    print("Finished reading config")
     #dataset
     num_tasks = config["num_tasks"]
     print(f"Dataset parameters: \n  num_tasks:{num_tasks}")
@@ -221,14 +134,11 @@ def main(config_path, id="0", save=True):
         "accuracies": accs,
         "metrics": metrics
     }
-    os.makedirs('extension_logs', exist_ok=True)
+    os.makedirs(f'{save_folder}', exist_ok=True)
     #save the accs
     if save:
-        with open(f'extension_logs/{algorithm_name}_{id}.json', 'w') as f:
+        with open(f'{save_folder}/{algorithm_name}_{id}.json', 'w') as f:
             json.dump(result_dict, f, indent=4, default=lambda o: o.tolist() if isinstance(o, torch.Tensor) else o)
-
-
-    plot_results(metrics)
 
 
 if __name__=="__main__":

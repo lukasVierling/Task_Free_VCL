@@ -35,7 +35,6 @@ def get_mle_estimate_extension(model, dataset, device):
         outputs = mle_model(x)
         loss = 0
         if model.mode == "regression":
-            print("no regression MLE support yet")
             one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
             loss = F.mse_loss(outputs,one_hot_labels)
 

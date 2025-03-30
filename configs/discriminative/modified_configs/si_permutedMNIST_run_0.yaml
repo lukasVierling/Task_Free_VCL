@@ -9,4 +9,4 @@ batch_size: 256
 single_head: True
 seed: 100
 id: 0
-save_folder: "10_runs_SI"
+save_folder: "10_runs_SI_final2"

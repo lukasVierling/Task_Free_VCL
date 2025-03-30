@@ -3,11 +3,11 @@ num_tasks: 10
 epochs: 100
 lr: 0.001
 hidden_dim: 100
-coreset_size: 200
+coreset_size: 1000
 coreset_heuristic: "random"
 batch_size: 256
-mode: "bernoulli"
+mode: "regression"
 single_head: True
 seed: 101
 id: 6
-save_folder: "10_runs_vi_final"
+save_folder: "10_runs_vi_final_regression"

@@ -165,15 +165,23 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
 
             #evaluate the integral over weights via monte carlo estimate
             probs = []
-            for _ in range(num_samples):
-                probs.append(F.softmax(model(x),dim=1))
-            probs = torch.stack(probs).mean(dim=0)
-
             if model.mode == "regression":
+                preds = []
+                for _ in range(num_samples):
+                    #no softmax for output needed
+                    preds.append(model(x))
+                preds = torch.stack(preds).mean(dim=0)
                 one_hot_labels = F.one_hot(y, num_classes=model.output_dim).float()
-                se = F.mse_loss(probs, one_hot_labels, reduction="sum") #TODO mean here? ??
+                se = F.mse_loss(preds, one_hot_labels, reduction="sum") #TODO mean here? ??
                 squared_errors.append(se.item())
+                max_pred = torch.argmax(preds, dim=-1)
+                correct += torch.sum(max_pred == y)
+                labels.extend(max_pred.tolist())
             else:
+                probs = []
+                for _ in range(num_samples):
+                    probs.append(F.softmax(model(x),dim=1))
+                probs = torch.stack(probs).mean(dim=0)
                 pred = torch.argmax(probs, dim=-1)
                 correct += torch.sum(pred == y)
                 #print(pred.shape)
@@ -185,6 +193,8 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
     if model.mode == "regression":
         total = torch.tensor(sum(squared_errors))
         metrics = torch.sqrt(total /(len(curr_test_dataset) * model.output_dim))
+        acc = correct / len(labels)
+        print(f"Accuracy was : {acc}, RMSE: {metrics}")
     else:
         metrics = correct/len(labels)
     return metrics

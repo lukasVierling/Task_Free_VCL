@@ -6,6 +6,6 @@ hidden_dim: 100
 lambdas: [10,10,10,10,10,10,10,10,10,10] #try values like 100
 batch_size: 200
 latent_dim: 50
-seed: 6
+seed: 100
 id: 0
 save_folder: "10_runs_ewc_gen_final"
