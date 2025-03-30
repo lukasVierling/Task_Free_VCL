@@ -147,9 +147,9 @@ class GenerativeModel(nn.Module):
         self.heads = nn.ModuleList()
         self.active_head = 0
 
-    def get_stacked_grads(self):
+    def get_stacked_gradients(self):
         grads = [params.grad.clone().detach().view(-1) for params in self.shared.parameters()]
-        return torch.stack(grads)
+        return torch.cat(grads)
     
     def get_stacked_params(self, detach=True):
         if detach:

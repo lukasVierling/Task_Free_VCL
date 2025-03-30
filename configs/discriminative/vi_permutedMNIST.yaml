@@ -9,3 +9,5 @@ batch_size: 256
 mode: "bernoulli"
 single_head: True
 seed: 5
+id: 1
+save_folder: "10_runs_vi_final"

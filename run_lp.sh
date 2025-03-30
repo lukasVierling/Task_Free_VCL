@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_experiments.sh
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 # Define arrays of hyperparameters
 lambd_values=(0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1)

@@ -1,10 +1,11 @@
 #!/bin/bash
 # run_experiments.sh
 
+export CUDA_VISIBLE_DEVICES=1
 # Define arrays of hyperparameters for multiple runs
-lambd_values=(100 100 100 100 100)
-seed_values=(31 32 33 34 35)
-ids=(5 6 7 8 9)
+lambd_values=(10 10 10 10 10 10 10 10 10 10)
+seed_values=(100 101 102 103 104 105 106 107 108 109)
+ids=(1 2 3 4 5 6 7 8 9)
 
 # Base config file path
 base_config="configs/generative/lp_generateMNIST.yaml"

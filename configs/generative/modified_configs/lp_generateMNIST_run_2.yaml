@@ -1,0 +1,11 @@
+algorithm_name: "LP"
+num_tasks: 10
+epochs: 200 #should be 200
+lr: 0.0001 #reduce to 10^-4
+hidden_dim: 500
+latent_dim: 50
+lambd: 10
+batch_size: 200
+seed: 102
+id: 3
+save_folder: "10_runs_gen_final"

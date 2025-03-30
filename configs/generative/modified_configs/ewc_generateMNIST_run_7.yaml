@@ -1,0 +1,11 @@
+algorithm_name: "EWC"
+num_tasks: 10
+epochs: 200
+lr: 0.0001
+hidden_dim: 100
+lambdas: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+batch_size: 200
+latent_dim: 50
+seed: 107
+id: 8
+save_folder: "10_runs_gen_final"

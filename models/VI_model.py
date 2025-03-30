@@ -219,9 +219,9 @@ class GenerativeModel(nn.Module):
         # move the old head to the same device as previous head
         device = self.shared[0].W_mu.device
         new_head = nn.Sequential(
-            BayesianLayer(self.latent_dim, self.hidden_dim),
+            nn.Linear(self.latent_dim, self.hidden_dim),
             nn.ReLU(),
-            BayesianLayer(self.hidden_dim, self.hidden_dim)
+            nn.Linear(self.hidden_dim, self.hidden_dim)
         ).to(device)
         self.heads.append(new_head)
         self.active_head = len(self.heads)-1
@@ -230,11 +230,11 @@ class GenerativeModel(nn.Module):
     def add_encoder(self):
         device = self.shared[0].W_mu.device
         new_encoder = nn.Sequential(
-            BayesianLayer(self.input_dim, self.hidden_dim),
+            nn.Linear(self.input_dim, self.hidden_dim),
             nn.ReLU(),
-            BayesianLayer(self.hidden_dim, self.hidden_dim),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
-            BayesianLayer(self.hidden_dim, self.latent_dim * 2)
+            nn.Linear(self.hidden_dim, 2* self.latent_dim) #to predict mean and log(sigma^2)
         ).to(device)
         self.encoders.append(new_encoder)
         self.active_encoder = len(self.encoders)-1
@@ -301,7 +301,6 @@ class GenerativeModel(nn.Module):
         return normalized_y
 
 
-
     def forward(self, x):
         #get bs
         batch_size = x.shape[0]
@@ -334,4 +333,3 @@ class GenerativeModel(nn.Module):
 
         return normalized_y, mean, log_var
     
-

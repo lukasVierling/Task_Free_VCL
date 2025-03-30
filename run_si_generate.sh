@@ -1,10 +1,11 @@
 #!/bin/bash
 # run_experiments_SI.sh
+export CUDA_VISIBLE_DEVICES=2
 
 # Define arrays of hyperparameters for multiple runs
-c_values=(0.01 0.01 0.01 0.005 0.005 0.005)
-seed_values=(31 32 33 31 32 33)
-ids=(11 12 13 14 15 16)
+c_values=(1 1 1 1 1 1 1 1 1 1)
+seed_values=(100 101 102 103 104 105 106 107 108 109)
+ids=(1 2 3 4 5 6 7 8 9)
 
 # Base config file path for SI experiments
 base_config="configs/generative/si_generateMNIST.yaml"

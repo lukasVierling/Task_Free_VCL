@@ -105,7 +105,7 @@ def minimize_KL(model, prior, dataset, batch_size, epochs, lr, device):
             # calculate the KL div between prior and new var dist -> closed form since both mena field gaussian
             if prior is not None:
                 rhs = kl_div_gaussian_for_gen(model.get_var_dist(detach=False), prior) #TODO this has previously not been correct
-                rhs = rhs #TODO divide by len dataset
+                rhs = batch_size * rhs / len(dataset) #TODO divide by len dataset
                 #rhs = 0
             else:
                 rhs = 0
@@ -265,7 +265,7 @@ def sample_generations(model, classifier, curr_test_dataset, batch_size,device):
     # Filename
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"mean_timesBS_vi_generation_{timestamp}.png"
+        filename = f"relu_vi_generation_{timestamp}.png"
 
     save_path = os.path.join(save_dir, filename)
     plt.savefig(save_path)

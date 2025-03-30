@@ -3,9 +3,9 @@ num_tasks: 10
 epochs: 200
 lr: 0.0001
 hidden_dim: 100
-lambdas: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
-batch_size: 256
+lambdas: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+batch_size: 200
 latent_dim: 50
-seed: 33
-id: 7
-save_folder: "10_runs_LP"
+seed: 102
+id: 3
+save_folder: "10_runs_gen_final"

@@ -8,4 +8,4 @@ batch_size: 200
 latent_dim: 50
 seed: 6
 id: 0
-save_folder: "10_runs_LP"
+save_folder: "10_runs_gen_final"
