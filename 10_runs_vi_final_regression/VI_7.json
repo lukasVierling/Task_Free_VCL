@@ -1,0 +1,30 @@
+{
+    "config": {
+        "algorithm_name": "VI",
+        "num_tasks": 10,
+        "epochs": 100,
+        "lr": 0.001,
+        "hidden_dim": 100,
+        "coreset_size": 1000,
+        "coreset_heuristic": "random",
+        "batch_size": 256,
+        "mode": "regression",
+        "single_head": true,
+        "seed": 102,
+        "id": 7,
+        "save_folder": "10_runs_vi_final_regression"
+    },
+    "accuracies": [
+        0.18544167280197144,
+        0.1934499442577362,
+        0.1949407309293747,
+        0.1934298872947693,
+        0.19745182991027832,
+        0.19749432802200317,
+        0.19884607195854187,
+        0.20133082568645477,
+        0.20125240087509155,
+        0.20324084162712097
+    ],
+    "seed": 102
+}

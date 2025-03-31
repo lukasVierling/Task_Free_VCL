@@ -4,9 +4,9 @@
 export CUDA_VISIBLE_DEVICES=4
 
 # Define arrays of hyperparameters for multiple runs
-hidden_dims=(256 256 256 256 256)
-seed_values=(100 101 102 103 104)
-ids=(20 21 22 23 24)
+hidden_dims=(64 64 64 64)
+seed_values=(100 101 102 103)
+ids=(24 25 26 27)
 
 # Base config file path
 base_config="configs/discriminative/extension_permutedMNIST.yaml"

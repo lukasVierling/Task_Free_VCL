@@ -180,9 +180,9 @@ class BayesianNN(nn.Module):
                 preds = [self(x.view(batch_size, -1), head_idx=best_head) for _ in range(num_samples)]
 
                 best_preds = torch.stack(preds)
-                print("best predas shape:", best_preds.shape)
+                #print("best predas shape:", best_preds.shape)
                 best_preds = best_preds.mean(dim=0)
-                print("best predas shape:", best_preds.shape)
+                #print("best predas shape:", best_preds.shape)
 
         return best_preds, best_head
 
