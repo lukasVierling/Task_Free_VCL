@@ -7,6 +7,6 @@ latent_dim: 50
 c: 1
 damping_param: 0.1
 batch_size: 256
-seed: 6
+seed: 100
 id: 0
 save_folder: "10_runs_si_final_gen_numeric"

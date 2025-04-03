@@ -183,8 +183,6 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
         kl_div = F.kl_div(torch.log(probs), one_hot, reduction="mean") #expects log probabilities
         uncertainty_measure = kl_div
 
-        #sample performance
-        sample_generations(model, None, curr_test_dataset, batch_size, device)
 
         ###
         #llh part
@@ -239,41 +237,6 @@ def perform_generations(model, classifier, curr_test_dataset,batch_size,device, 
         average_ll = summed_ll / len(curr_test_dataset)
     model.train()
     return uncertainty_measure, average_ll
-
-def sample_generations(model, classifier, curr_test_dataset, batch_size,device):
-    #make a test to visually verify if it works
-    z = torch.randn(25, 50).to(device)
-    #x,y = curr_test_dataset[0]
-    #print(x.shape)
-    #mean, log_var = model.encode(x.unsqueeze(0).to(device))
-    #z = mean + z * torch.exp(0.5*log_var)
-    # Decode to images
-    with torch.no_grad():
-        generated = model.decode(z)  # Output: [n_images, 784]
-        generated = generated.view(-1, 28, 28).cpu()  # Reshape to [n_images, 28, 28]
-
-    # Plot images in a 5x5 grid
-    fig, axs = plt.subplots(5, 5, figsize=(5, 5))
-    for i, ax in enumerate(axs.flat):
-        ax.imshow(generated[i], cmap='gray')
-        ax.axis('off')
-
-        plt.tight_layout()
-    save_dir = "outputs"
-    filename = None
-    # Ensure directory exists
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Filename
-    if filename is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"relu_vi_generation_{timestamp}.png"
-
-    save_path = os.path.join(save_dir, filename)
-    plt.savefig(save_path)
-    plt.close()
-
-    print(f"[INFO] Saved generations to: {save_path}")
 
 def coreset_vcl(model, train_datasets, test_datasets, classifier, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random", device="cpu"):
     '''
