@@ -14,7 +14,7 @@ based on the model’s epistemic uncertainty, making it more suitable for real-w
 
 <img src="images/results.png" alt="Results Overview" width="500">
 
-*Figure 1: Visualization of loss barriers between ResNets with different symmetric kernels.*
+*Figure 1: Visualization of EURO method for task switch detection and head routing.*
 
 ## Requirements
 
