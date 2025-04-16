@@ -29,15 +29,15 @@ pip install -r requirements_pip.txt
 To run the discriminative experiment, run:
 
 ```experiment1
-python exp_permutedMNIST.py --configs/
+python exp_permutedMNIST.py --configs/discriminative/vi_permutedMNIST.yaml
 ```
 Choose a config depending on the kernel symmetry you want.
-### Linear Mode Connectivity
+### Generative Experiment
 
 To run the generative experiment, run:
 
 ```experiment2
-python exp_generatedMNIST.py --configs/discriminative/vi_permutedMNIST.yaml
+python exp_generatedMNIST.py --configs/generative/vi_generateMNIST.yaml
 ```
 ### Mandatory Extension
 
