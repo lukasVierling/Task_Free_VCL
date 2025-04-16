@@ -6,7 +6,7 @@ hidden_dim: 100
 coreset_size: 0
 coreset_heuristic: "random"
 batch_size: 256
-mode: "bernoulli"
+mode: "regression"
 single_head: True
 seed: 100
 id: 1
