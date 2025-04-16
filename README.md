@@ -1,4 +1,4 @@
-# A Loss Perspective on Symmetric CNN Kernels
+# Are You Sure? - Task Free VCL
 Recent machine learning systems are able to surpass human performance in many different
 tasks. Yet, most of these models are only experts at a single task. Continual Learning (CL) describes
 the setup in which a model is trained on a constant flow of new data. The goal of CL is for the model
