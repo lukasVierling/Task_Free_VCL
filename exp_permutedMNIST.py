@@ -79,8 +79,9 @@ def main(config_path, id="0", save=True):
         coreset_heuristic = config["coreset_heuristic"]
         mode = config["mode"]
         single_head = config["single_head"]
+        coreset_only = config.get("coreset_only", False)
         print(f"VI parameters for coreset:\n   coreset_size:{coreset_size} \n   coreset_heuristic:{coreset_heuristic}\n    mode: {mode} \n    single head:{single_head}")
-        alg_args = {"coreset_size":coreset_size, "coreset_heuristic": coreset_heuristic}
+        alg_args = {"coreset_size":coreset_size, "coreset_heuristic": coreset_heuristic, "coreset_only":coreset_only}
         model_args = {"mode": mode, "single_head": single_head}
     elif algorithm_name == "EWC":
         model_class = EWC_model

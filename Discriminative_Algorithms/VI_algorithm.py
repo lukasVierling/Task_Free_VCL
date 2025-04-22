@@ -199,7 +199,7 @@ def perform_predictions(model, curr_test_dataset,batch_size,device, num_samples=
         metrics = correct/len(labels)
     return metrics
 
-def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random", device="cpu"):
+def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, coreset_size=0, coreset_heuristic="random",coreset_only=False, device="cpu"):
     '''
     Input:
     - prior : prior distribution
@@ -225,10 +225,11 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
     #init prior as N(0,1)
     prior = get_standard_normal_prior(model, device)
     #get MLE estimate
-    model_init = get_mle_estimate(model, train_datasets[0], device)
-    # get the number of datasets T
-    model.set_var_dist(model_init)
-    print("Acc:", perform_predictions(model, test_datasets[0], 256, device))
+    if not(coreset_only):
+        model_init = get_mle_estimate(model, train_datasets[0], device)
+        # get the number of datasets T
+        model.set_var_dist(model_init)
+        print("Acc:", perform_predictions(model, test_datasets[0], 256, device))
 
     #optimizer
     #optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -249,6 +250,8 @@ def coreset_vcl(model, train_datasets, test_datasets, batch_size, epochs, lr, co
         if use_coreset:
             print(f"current Coreset length (should be {coreset_size * (i+1)}): ", len(curr_coresets))
         # Update the variational distribution for non-coreset data points
+        if coreset_only:
+            curr_dataset = curr_coresets[-1]
         update_var_approx_non_coreset(model, prior, curr_dataset, coreset_idx, train_datasets ,batch_size, epochs, lr, device)
         # Compute the final variational distribution (only used for prediction, and not propagation)
         #get q_t tilde before optimizing to get q_t

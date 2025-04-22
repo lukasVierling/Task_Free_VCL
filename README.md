@@ -29,7 +29,7 @@ pip install -r requirements_pip.txt
 To run the discriminative experiment, run:
 
 ```experiment1
-python exp_permutedMNIST.py --configs/discriminative/vi_permutedMNIST.yaml
+python exp_permutedMNIST.py --config configs/discriminative/vi_permutedMNIST.yaml
 ```
 Choose a config depending on the kernel symmetry you want.
 ### Generative Experiment
@@ -37,21 +37,21 @@ Choose a config depending on the kernel symmetry you want.
 To run the generative experiment, run:
 
 ```experiment2
-python exp_generatedMNIST.py --configs/generative/vi_generateMNIST.yaml
+python exp_generatedMNIST.py --config configs/generative/vi_generateMNIST.yaml
 ```
 ### Mandatory Extension
 
 To run the mandatory extension experiment, run:
 
 ```experiment3
-python exp_permutedMNIST.py --configs/discriminative/vi_reg_generateMNIST.yaml
+python exp_permutedMNIST.py --config configs/discriminative/vi_reg_generateMNIST.yaml
 ```
 ### EURO Extension
 
 To run the EURO experiments, run:
 
 ```experiment4
-python exp_extensionMNIST.py --configs/extension_permutedMNIST.yaml
+python exp_extensionMNIST.py --config configs/extension_permutedMNIST.yaml
 ```
 Use automatic_detection to enable and disable automatic switch detection.
 
