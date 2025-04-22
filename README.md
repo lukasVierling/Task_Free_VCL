@@ -37,7 +37,7 @@ Choose a config depending on the kernel symmetry you want.
 To run the generative experiment, run:
 
 ```experiment2
-python exp_generatedMNIST.py --config configs/generative/vi_generateMNIST.yaml
+python exp_generateMNIST.py --config configs/generative/vi_generateMNIST.yaml
 ```
 ### Mandatory Extension
 
